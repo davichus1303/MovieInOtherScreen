@@ -15,6 +15,7 @@
 use std::cell::RefCell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use gtk::glib;
 use gtk::glib::translate::*;
@@ -23,6 +24,9 @@ use gtk::prelude::*;
 use crate::logging;
 use crate::player::ffi::{self, mpv_opengl_fbo, mpv_opengl_init_params, mpv_render_param};
 use crate::player::mpv_engine::mpv_handle;
+
+/// Contador global de renders (para diagnóstico del video embebido).
+static RENDER_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Callback (`mpv_render_context_set_update_callback`) que encola un repintado
 /// del GLArea en el hilo principal. mpv lo invoca desde su propio hilo.
@@ -116,6 +120,17 @@ impl EmbeddedVideo {
         let state = self.state.clone();
         let widget = self.gl_area.clone();
         gl_area.connect_render(move |area, gl_context| {
+            // Diagnóstico: cada ~90 renders se anota en el log (evita spam).
+            let n = RENDER_COUNT.fetch_add(1, Ordering::Relaxed);
+            if n % 90 == 0 {
+                let created = state.borrow().render_ctx.is_null() == false;
+                logging::info(format!(
+                    "[embed] render n={n} ctx_creado={created} tamaño={}x{}",
+                    area.width(),
+                    area.height()
+                ));
+            }
+
             let mut s = state.borrow_mut();
             if s.render_ctx.is_null() {
                 // Inicializa el render context la primera vez que dibujamos.
@@ -143,6 +158,7 @@ impl EmbeddedVideo {
                     logging::error("No se pudo crear el contexto de render de mpv (GLArea)");
                     return glib::Propagation::Proceed;
                 }
+                logging::info("[embed] render context de mpv creado (GLArea GL)");
                 unsafe {
                     ffi::mpv_render_context_set_update_callback(
                         s.render_ctx,
