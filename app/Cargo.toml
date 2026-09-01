@@ -1,0 +1,28 @@
+[package]
+name = "mos-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Movies on Other Screens — app GTK4/libadwaita/libmpv"
+
+[[bin]]
+name = "movies-on-other-screens"
+path = "src/main.rs"
+required-features = ["gui"]
+
+[dependencies]
+mos-core = { path = "../core" }
+
+# Dependencias de interfaces/backends solo disponibles dentro del SDK GNOME
+# (Flatpak). Se mantienen tras un feature para que `cargo test` de la lógica
+# pura (crate `core`) se pueda resolver y ejecutar sin ellas en un sistema sin
+# GTK/libadwaita/libmpv instalados.
+gtk = { package = "gtk4", version = "0.9", features = ["v4_14"], optional = true }
+libadwaita = { version = "0.7", features = ["v1_5"], optional = true }
+mpv = { version = "0.2", optional = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = ["gui"]
+gui = ["dep:gtk", "dep:libadwaita", "dep:mpv", "dep:serde"]

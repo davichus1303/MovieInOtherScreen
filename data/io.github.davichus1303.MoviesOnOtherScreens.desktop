@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Movies on Other Screens
+Comment=Reproduce vídeos en múltiples monitores de forma sincronizada
+Exec=movies-on-other-screens
+Type=Application
+Terminal=false
+Categories=AudioVideo;Player;
+Icon=io.github.davichus1303.MoviesOnOtherScreens
+StartupNotify=true

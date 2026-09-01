@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-core:
+    name: Test lógica (core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (sin dependencias de interfaz)
+        run: cargo test --workspace --no-default-features
+      - name: Clippy (core)
+        run: cargo clippy -p mos-core -- -D warnings
+      - name: Formato
+        run: cargo fmt --all -- --check
+
+  build-flatpak:
+    name: Build Flatpak (SDK GNOME)
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-46
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: movies-on-other-screens.flatpak
+          manifest-path: build-aux/io.github.davichus1303.MoviesOnOtherScreens.json
+          cache-key: flatpak-builder-${{ github.sha }}

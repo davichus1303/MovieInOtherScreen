@@ -1,0 +1,77 @@
+{
+  "id": "io.github.davichus1303.MoviesOnOtherScreens",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "46",
+  "sdk": "org.gnome.Sdk",
+  "base": "org.freedesktop.Sdk.Extension.rust-stable",
+  "base-version": "23.08",
+  "command": "movies-on-other-screens",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=x11",
+    "--device=dri",
+    "--share=network",
+    "--filesystem=host"
+  ],
+  "build-options": {
+    "append-path": "/usr/lib/sdk/rust-stable/bin",
+    "build-args": [
+      "--share=network"
+    ],
+    "env": {
+      "RUST_BACKTRACE": "1"
+    }
+  },
+  "modules": [
+    {
+      "name": "ffmpeg",
+      "buildsystem": "simple",
+      "build-commands": [
+        "./configure --prefix=${FLATPAK_DEST} --enable-shared --disable-static --disable-programs --disable-doc --disable-network --enable-pic",
+        "make -j${FLATPAK_BUILDER_N_JOBS}",
+        "make install"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz",
+          "sha256": "8684f4b00f94b85461884c3719382f1261f0d9eb3d59640a1f4ac0873616f968"
+        }
+      ]
+    },
+    {
+      "name": "libmpv",
+      "buildsystem": "simple",
+      "build-commands": [
+        "./waf configure --prefix=${FLATPAK_DEST} --enable-libmpv-shared --disable-cplayer --disable-lua --disable-javascript --disable-cplugins",
+        "./waf build -j${FLATPAK_BUILDER_N_JOBS}",
+        "./waf install"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/mpv-player/mpv/archive/v0.36.0.tar.gz",
+          "sha256": "7e92658a8ded7ba79a4c6e4b724e25d10355fc44142a54f1a6a722606e6e0d20"
+        }
+      ]
+    },
+    {
+      "name": "movies-on-other-screens",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cargo build --release --bin movies-on-other-screens",
+        "install -Dm755 target/release/movies-on-other-screens ${FLATPAK_DEST}/bin/movies-on-other-screens",
+        "install -Dm644 data/io.github.davichus1303.MoviesOnOtherScreens.desktop ${FLATPAK_DEST}/share/applications/io.github.davichus1303.MoviesOnOtherScreens.desktop",
+        "install -Dm644 data/io.github.davichus1303.MoviesOnOtherScreens.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.davichus1303.MoviesOnOtherScreens.metainfo.xml",
+        "install -Dm644 data/icons/io.github.davichus1303.MoviesOnOtherScreens.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.davichus1303.MoviesOnOtherScreens.svg"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".."
+        }
+      ]
+    }
+  ]
+}

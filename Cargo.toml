@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["core", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["The movies-on-other-screens developers"]
+repository = "https://github.com/davichus1303/movies-on-other-screens"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+# Versión compatible con el toolchain mínimo soportado (Rust 1.75).
+tempfile = "=3.10.1"

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.davichus1303.MoviesOnOtherScreens</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Movies on Other Screens</name>
+  <summary>Reproduce vídeos en múltiples monitores de forma sincronizada</summary>
+  <description>
+    <p>
+      Aplicación de escritorio para Linux (Wayland) que reproduce el mismo
+      vídeo simultáneamente y de forma sincronizada en varios monitores,
+      manteniendo una sola decodificación y un único flujo de audio.
+    </p>
+    <p>
+      Requiere una sesión Wayland de GNOME. Solo se distribuye para Linux.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.davichus1303.MoviesOnOtherScreens.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+</component>
