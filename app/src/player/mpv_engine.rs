@@ -93,8 +93,23 @@ struct MpvSession {
     paused: bool,
 }
 
+/// Categoría de locale `LC_NUMERIC` (definición POSIX).
+const LC_NUMERIC: i32 = 1;
+
+unsafe extern "C" {
+    fn setlocale(category: i32, locale: *const u8) -> *mut u8;
+}
+
 impl MpvSession {
     fn new(events: &Sender<PlayerEvent>) -> mpv::Result<Self> {
+        // libmpv exige `LC_NUMERIC` en `"C"`. El ajuste hecho en `main` puede
+        // perderse cuando GTK/GLib resetea el locale a las variables de entorno
+        // al inicializarse, así que se vuelve a fijar justo aquí, antes de crear
+        // el núcleo de mpv (fallaría con MPV_ERROR_NOMEM si no fuera "C").
+        unsafe {
+            setlocale(LC_NUMERIC, b"C\0".as_ptr());
+        }
+
         let mut builder = mpv::MpvHandlerBuilder::new()?;
         // Priorizar aceleración por hardware cuando esté disponible.
         builder.try_hardware_decoding()?;
