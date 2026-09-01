@@ -24,6 +24,13 @@ pub const MPV_RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
 pub const MPV_RENDER_PARAM_OPENGL_FBO: c_int = 3;
 pub const MPV_RENDER_PARAM_FLIP_Y: c_int = 4;
 
+/// Bitflag de `mpv_render_context_update()`: un frame de vídeo nuevo está
+/// disponible y hay que re-renderizar.
+pub const MPV_RENDER_UPDATE_FRAME: u64 = 1;
+
+/// Constante OpenGL `GL_FRAMEBUFFER_BINDING`.
+pub const GL_FRAMEBUFFER_BINDING: c_int = 0x8CA6;
+
 /// Cadena `char *` que identifica el render API OpenGL.
 pub const MPV_RENDER_API_TYPE_OPENGL: &[u8] = b"opengl\0";
 
@@ -74,7 +81,28 @@ extern "C" {
         callback: mpv_render_update_fn,
         callback_ctx: *mut c_void,
     );
+    /// Pide a mpv el estado pendiente de render (bits de `MPV_RENDER_UPDATE_*`).
+    /// Debe llamarse al recibir el update callback, y es obligatorio cuando
+    /// `ADVANCED_CONTROL` está activo; de lo contrario el VO se traba.
+    pub fn mpv_render_context_update(ctx: mpv_render_context_handle) -> u64;
+    /// Opcional; notifica a mpv que la cadena de presentación avanzó (vsync).
+    pub fn mpv_render_context_report_swap(ctx: mpv_render_context_handle);
     pub fn mpv_render_context_free(ctx: mpv_render_context_handle);
+}
+
+/// Llama `glGetIntegerv` (resuelta vía el loader GL) para leer el framebuffer
+/// actualmente enlazado por GTK/GLArea.
+pub unsafe fn gl_get_framebuffer_binding() -> c_int {
+    let mut fbo: c_int = 0;
+    unsafe {
+        let get = resolve_gl_proc(b"glGetIntegerv\0".as_ptr() as *const c_char);
+        if !get.is_null() {
+            type GlGetIntegerv = unsafe extern "C" fn(pname: c_int, data: *mut c_int);
+            let f: GlGetIntegerv = std::mem::transmute(get);
+            f(GL_FRAMEBUFFER_BINDING, &mut fbo);
+        }
+    }
+    fbo
 }
 
 #[link(name = "EGL")]
