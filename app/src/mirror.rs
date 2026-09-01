@@ -225,7 +225,9 @@ impl MirrorController {
     ///
     /// `pos_base`: posición (segundos) a la que alinear un espejo que se abre
     /// a mitad de reproducción.
-    pub fn reconfigure(&mut self, selected: &[String], pos_base: Option<f64>) {
+    pub fn reconfigure(&mut self, selected: &[String], _pos_base: Option<f64>) {
+        let current_path = self.current_path.clone();
+
         // Cerrar los que ya no están seleccionados.
         let stale: Vec<String> = self
             .windows
@@ -237,28 +239,28 @@ impl MirrorController {
             self.remove(&id);
         }
 
-        // Abrir los que faltan (solo si hay algo que espejar; si aún no hay
-        // reproducción activa no se abren ventanas vacías).
-        if self.current_path.is_none() {
+        // Si no hay reproducción activa, no abrimos ventanas nuevas.
+        let Some(path) = current_path else {
             return;
-        }
+        };
+
+        // Cargar el video en TODOS los espejos (nuevos y existentes).
+        // Esto asegura que al cambiar de video, todos los espejos se actualicen.
         for id in selected {
-            if self.windows.contains_key(id) {
-                continue;
+            if let Some(w) = self.windows.get(id) {
+                // Espejo ya abierto: recargar con el video nuevo.
+                w.core.send(MirrorCmd::Load(path.clone(), None));
+            } else if let Some(monitor) = self.resolve_monitor(id) {
+                // Espejo nuevo: abrir y cargar.
+                let w = MirrorWindow::open(id, &monitor, &self.application);
+                self.windows.insert(id.clone(), w);
+                self.windows[id].core.send(MirrorCmd::Load(path.clone(), None));
             }
-            match self.resolve_monitor(id) {
-                Some(monitor) => {
-                    let w = MirrorWindow::open(id, &monitor, &self.application);
-                    self.windows.insert(id.clone(), w);
-                    if let Some(path) = &self.current_path {
-                        self.windows[id].core.send(MirrorCmd::Load(path.clone(), pos_base));
-                        self.windows[id].core.send(MirrorCmd::Play);
-                    }
-                }
-                None => {
-                    logging::warn(format!("[mirror] monitor {id} no encontrado en GDK"));
-                }
-            }
+        }
+
+        // Iniciar reproducción en todos.
+        for w in self.windows.values() {
+            w.core.send(MirrorCmd::Play);
         }
     }
 

@@ -390,7 +390,7 @@ impl PlayerArea {
         controls.set_margin_top(6);
         controls.set_margin_bottom(6);
         for (label, command) in [
-            ("⏮", PlayerCommand::Stop),
+            ("⏮", PlayerCommand::Seek(0.0)),
             ("▶", PlayerCommand::Play),
             ("⏸", PlayerCommand::Pause),
             ("⏹", PlayerCommand::Stop),
@@ -403,7 +403,8 @@ impl PlayerArea {
                 let mirror_cmd = match command {
                     PlayerCommand::Play => Some(mirror::MirrorCmd::Play),
                     PlayerCommand::Pause => Some(mirror::MirrorCmd::Pause),
-                    PlayerCommand::Stop => Some(mirror::MirrorCmd::Pause),
+                    PlayerCommand::Seek(pos) => Some(mirror::MirrorCmd::Seek(pos)),
+                    PlayerCommand::Stop => Some(mirror::MirrorCmd::Seek(0.0)),
                     _ => None,
                 };
                 if let Some(cmd) = mirror_cmd {
