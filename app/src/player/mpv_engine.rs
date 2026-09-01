@@ -73,15 +73,62 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
     };
     logging::info("Motor mpv inicializado correctamente.");
 
-    for command in commands {
-        match command {
-            PlayerCommand::Load(path) => player.load(&path),
-            PlayerCommand::Play => player.play(),
-            PlayerCommand::Pause => player.pause(),
-            PlayerCommand::Stop => player.stop(),
-            PlayerCommand::Seek(seconds) => player.seek(seconds),
-            PlayerCommand::TogglePause => player.toggle_pause(),
-            PlayerCommand::Shutdown => break,
+    // Observa la posición y la duración para mover la barra de progreso.
+    let _ = player.handler.observe_property::<f64>("time-pos", 1);
+    let _ = player.handler.observe_property::<f64>("duration", 2);
+
+    loop {
+        // Drena los eventos de mpv (timeout 0 => no bloqueante). Los cambios
+        // de las propiedades observadas se publican como eventos de la UI.
+        let mut busy = false;
+        while let Some(ev) = player.handler.wait_event(0.0) {
+            busy = true;
+            use mpv::Event;
+            match ev {
+                Event::PropertyChange { name, change, .. } => match name {
+                    "time-pos" => {
+                        if let mpv::Format::Double(p) = change {
+                            let _ = events.send(PlayerEvent::Position(p));
+                        }
+                    }
+                    "duration" => {
+                        if let mpv::Format::Double(d) = change {
+                            let _ = events.send(PlayerEvent::Duration(d));
+                        }
+                    }
+                    _ => {}
+                },
+                Event::Pause => {
+                    player.paused = true;
+                    let _ = events.send(PlayerEvent::Paused(true));
+                }
+                Event::Unpause => {
+                    player.paused = false;
+                    let _ = events.send(PlayerEvent::Paused(false));
+                }
+                Event::EndFile(Ok(_)) => {
+                    let _ = events.send(PlayerEvent::Ended);
+                }
+                _ => {}
+            }
+        }
+
+        // Procesa los comandos de la UI (no bloqueante).
+        match commands.try_recv() {
+            Ok(PlayerCommand::Load(path)) => player.load(&path),
+            Ok(PlayerCommand::Play) => player.play(),
+            Ok(PlayerCommand::Pause) => player.pause(),
+            Ok(PlayerCommand::Stop) => player.stop(),
+            Ok(PlayerCommand::Seek(seconds)) => player.seek(seconds),
+            Ok(PlayerCommand::TogglePause) => player.toggle_pause(),
+            Ok(PlayerCommand::Shutdown) => break,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+
+        // Pequeña pausa para no saturar la CPU cuando no hay actividad.
+        if !busy {
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 }

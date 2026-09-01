@@ -49,7 +49,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     toolbar.add_top_bar(&header);
 
     let video_list = Rc::new(RefCell::new(VideoList::new()));
-    let content = build_layout(&video_list, &state);
+    let (content, timeline) = build_layout(&video_list, &state);
     toolbar.set_content(Some(&content));
 
     let window = adw::ApplicationWindow::builder()
@@ -60,8 +60,9 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
         .content(&toolbar)
         .build();
 
-    // Lleva los eventos del reproductor al hilo principal.
-    bridge_events_to_gtk(ev_rx);
+    // Lleva los eventos del reproductor al hilo principal y los refleja en la
+    // barra de progreso (posición / duración).
+    bridge_events_to_gtk(ev_rx, timeline);
 
     let player_cmd = cmd_tx;
     let mirror_state = state.mirror.clone();
@@ -78,29 +79,37 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 fn build_layout(
     video_list: &Rc<RefCell<VideoList>>,
     state: &AppState,
-) -> gtk::Box {
+) -> (gtk::Box, Rc<RefCell<Timeline>>) {
     let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
 
     let sidebar = Sidebar::new(video_list, state).build();
     paned.set_start_child(Some(&sidebar));
 
-    let area = PlayerArea::new(state).build();
+    let (area, timeline) = PlayerArea::new(state).build();
     paned.set_end_child(Some(&area));
     paned.set_position(360);
 
     let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     root.append(&paned);
-    root
+    (root, timeline)
 }
 
 /// Consume los eventos del reproductor en el hilo principal, sondeando el
-/// canal `std::mpsc` con un temporizador ligero para no bloquear la UI.
-///
-/// Por ahora la reproducción se maneja solo por comandos (play, pause, load);
-/// los eventos de posicion no se reflejan aún en la interfaz.
-fn bridge_events_to_gtk(rx: std::sync::mpsc::Receiver<PlayerEvent>) {
-    glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-        while rx.try_recv().is_ok() {}
+/// canal `std::mpsc` con un temporizador ligero para no bloquear la UI, y
+/// refleja posición/duración en el timeline (barra + etiquetas de tiempo).
+fn bridge_events_to_gtk(
+    rx: std::sync::mpsc::Receiver<PlayerEvent>,
+    timeline: Rc<RefCell<Timeline>>,
+) {
+    glib::timeout_add_local(std::time::Duration::from_millis(33), move || {
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                PlayerEvent::Position(pos) => timeline.borrow().update_position(pos),
+                PlayerEvent::Duration(dur) => timeline.borrow_mut().update_duration(dur),
+                PlayerEvent::Ended => timeline.borrow().update_position(0.0),
+                _ => {}
+            }
+        }
         glib::ControlFlow::Continue
     });
 }
@@ -298,6 +307,63 @@ struct PlayerArea {
     state: AppState,
 }
 
+/// Estado del timeline (barra de progreso + etiquetas de tiempo) compartido
+/// entre el área de reproducción y el puente de eventos del reproductor.
+struct Timeline {
+    /// Duración del vídeo actual, en segundos (0 si aún se desconoce).
+    duration: f64,
+    /// Barra de progreso (0..100 por convención de `GtkScale`).
+    bar: gtk::Scale,
+    /// Etiqueta de posición actual.
+    pos_label: gtk::Label,
+    /// Etiqueta de duración total.
+    dur_label: gtk::Label,
+}
+
+impl Timeline {
+    /// Refleja la posición actual (segundos) en la barra y la etiqueta.
+    fn update_position(&self, pos: f64) {
+        self.pos_label.set_label(&fmt_time(pos));
+        let frac = if self.duration > 0.0 {
+            (pos / self.duration).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self.bar.set_value(frac * 100.0);
+    }
+
+    /// Actualiza la duración conocida y su etiqueta.
+    fn update_duration(&mut self, dur: f64) {
+        self.duration = dur;
+        self.dur_label.set_label(&fmt_time(dur));
+    }
+
+    /// Convierte el valor de la barra (0..100) a segundos usando la duración.
+    /// Devuelve `None` si no hay duración conocida (aún).
+    fn seek_seconds(&self, value: f64) -> Option<f64> {
+        if self.duration <= 0.0 {
+            return None;
+        }
+        Some((value / 100.0) * self.duration)
+    }
+}
+
+/// Formatea una duración en segundos como `mm:ss` (o `hh:mm:ss` cuando aplica).
+fn fmt_time(secs: f64) -> String {
+    if !secs.is_finite() || secs < 0.0 {
+        return "00:00".to_string();
+    }
+    let total = secs as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("{h:02}:{m:02}:{s:02}")
+    } else {
+        format!("{m:02}:{s:02}")
+    }
+}
+
 impl PlayerArea {
     fn new(state: &AppState) -> Self {
         Self {
@@ -305,7 +371,7 @@ impl PlayerArea {
         }
     }
 
-    fn build(&self) -> gtk::Box {
+    fn build(&self) -> (gtk::Box, Rc<RefCell<Timeline>>) {
         let player = self.state.player.clone();
 
         let column = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -348,25 +414,44 @@ impl PlayerArea {
         }
         column.append(&controls);
 
-        // Barra de progreso (10%).
-        let progress = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
-        progress.set_draw_value(false);
-        progress.set_hexpand(true);
+        // Timeline (barra de progreso + tiempo): muestra la posición actual y,
+        // al clicar/arrastrar en cualquier punto, salta a ese tiempo, tanto en
+        // el reproductor principal como en los espejos.
+        let bar = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+        bar.set_draw_value(false);
+        bar.set_hexpand(true);
+        let pos_label = gtk::Label::new(Some("00:00"));
+        let dur_label = gtk::Label::new(Some("00:00"));
+        let timeline = Rc::new(RefCell::new(Timeline {
+            duration: 0.0,
+            bar: bar.clone(),
+            pos_label: pos_label.clone(),
+            dur_label: dur_label.clone(),
+        }));
+
+        let tl_seek = timeline.clone();
         let send = player.clone();
         let mirror_state = self.state.clone();
-        progress.connect_change_value(move |_, _, value| {
-            let _ = send.send(PlayerCommand::Seek(value * 100.0));
-            mirror_control(&mirror_state, mirror::MirrorCmd::Seek(value * 100.0));
+        bar.connect_change_value(move |_, _, value| {
+            if let Some(seconds) = tl_seek.borrow().seek_seconds(value) {
+                let _ = send.send(PlayerCommand::Seek(seconds));
+                mirror_control(&mirror_state, mirror::MirrorCmd::Seek(seconds));
+            }
             glib::Propagation::Proceed
         });
-        column.append(&progress);
+
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.append(&pos_label);
+        row.append(&bar);
+        row.append(&dur_label);
+        column.append(&row);
 
         // Monitores (~30%).
         let monitors = build_monitors(&self.state);
         monitors.set_vexpand(true);
         column.append(&monitors);
 
-        column
+        (column, timeline)
     }
 }
 
