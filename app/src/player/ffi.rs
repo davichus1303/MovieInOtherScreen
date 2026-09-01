@@ -115,7 +115,11 @@ extern "C" {
 }
 
 /// `mpv_format` usado para leer/escribir propiedades en punto flotante.
-pub const MPV_FORMAT_DOUBLE: c_int = 4;
+///
+/// Coincide con `mpv_format` de libmpv: `MPV_FORMAT_DOUBLE = 5`
+/// (`MPV_FORMAT_INT64 = 4` es un valor distinto; usarlo aquí leía la propiedad
+/// como entero y devolvía basura al reinterpretarla como `f64`).
+pub const MPV_FORMAT_DOUBLE: c_int = 5;
 
 extern "C" {
     /// Lee una propiedad en formato double (`MPV_FORMAT_DOUBLE`). Devuelve
