@@ -19,6 +19,7 @@ use libadwaita as adw;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 use mos_core::video_list::VideoList;
 
+use crate::mirror;
 use crate::player::{PlayerCommand, PlayerEvent};
 
 /// Estado compartido por toda la interfaz.
@@ -28,6 +29,8 @@ struct AppState {
     player: std::sync::mpsc::Sender<PlayerCommand>,
     /// Monitores detectados y su selección.
     monitors: Rc<RefCell<MonitorSet>>,
+    /// Espejos de reproducción hacia los monitores seleccionados.
+    mirror: Rc<RefCell<mirror::MirrorController>>,
 }
 
 /// Puerto de entrada de la interfaz.
@@ -37,6 +40,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     let state = AppState {
         player: cmd_tx.clone(),
         monitors: Rc::new(RefCell::new(MonitorSet::new())),
+        mirror: Rc::new(RefCell::new(mirror::MirrorController::new(application))),
     };
 
     let toolbar = adw::ToolbarView::new();
@@ -60,7 +64,9 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     bridge_events_to_gtk(ev_rx);
 
     let player_cmd = cmd_tx;
+    let mirror_state = state.mirror.clone();
     window.connect_close_request(move |_| {
+        mirror_state.borrow_mut().clear();
         let _ = player_cmd.send(PlayerCommand::Shutdown);
         glib::Propagation::Proceed
     });
@@ -99,10 +105,52 @@ fn bridge_events_to_gtk(rx: std::sync::mpsc::Receiver<PlayerEvent>) {
     });
 }
 
+/// Reproduce un vídeo en el reproductor principal y, si hay monitores
+/// secundarios seleccionados, abre los espejos en ellos.
+fn mirror_on_play(state: &AppState, path: String) {
+    state.mirror.borrow_mut().set_playing(path.clone());
+    let selected: Vec<String> = state
+        .monitors
+        .borrow()
+        .selected()
+        .map(|m| m.id().to_string())
+        .collect();
+    let mut mirror = state.mirror.borrow_mut();
+    mirror.reconfigure(&selected, None);
+    mirror.control(mirror::MirrorCmd::Play);
+}
+
+/// Reconcilla los espejos con la selección de monitores actual, alineando a
+/// los nuevos con la posición actual del reproductor principal (para abrirlos
+/// "en mitad de la reproducción").
+fn mirror_reconcile(state: &AppState) {
+    let has_playback = !state.mirror.borrow().is_idle();
+    let pos = if has_playback {
+        mirror::main_time_pos()
+    } else {
+        None
+    };
+    let selected: Vec<String> = state
+        .monitors
+        .borrow()
+        .selected()
+        .map(|m| m.id().to_string())
+        .collect();
+    state.mirror.borrow_mut().reconfigure(&selected, pos);
+}
+
+/// Envía una orden de control (pausa/salto/play) a todos los espejos abiertos.
+fn mirror_control(state: &AppState, cmd: mirror::MirrorCmd) {
+    state.mirror.borrow_mut().control(cmd);
+}
+
+
 /// --- Sidebar ---
 struct Sidebar<'a> {
     videos: &'a Rc<RefCell<VideoList>>,
     player: std::sync::mpsc::Sender<PlayerCommand>,
+    mirror: Rc<RefCell<mirror::MirrorController>>,
+    monitors: Rc<RefCell<MonitorSet>>,
 }
 
 impl<'a> Sidebar<'a> {
@@ -110,6 +158,8 @@ impl<'a> Sidebar<'a> {
         Self {
             videos,
             player: state.player.clone(),
+            mirror: state.mirror.clone(),
+            monitors: state.monitors.clone(),
         }
     }
 
@@ -189,10 +239,31 @@ impl<'a> Sidebar<'a> {
         });
 
         // Reproducción reutilizable: doble clic / Enter sobre una fila.
-        // (Única vía activa de reproducción en esta iteración.)
+        // Además de reproducir en el área principal, abre espejos en los
+        // monitores seleccionados.
         let videos_sel = videos.clone();
         let player_sel = player.clone();
-        crate::playback::connect_double_click(&list, &videos_sel, &player_sel);
+        let mirror_sel = self.mirror.clone();
+        let monitors_sel = self.monitors.clone();
+        list.connect_row_activated(move |_list, row| {
+            let path = {
+                let borrowed = videos_sel.borrow();
+                match borrowed.get(row.index() as usize) {
+                    Some(v) => Some(v.path().to_string_lossy().into_owned()),
+                    None => None,
+                }
+            };
+            let Some(path) = path else {
+                return;
+            };
+            let st = AppState {
+                player: player_sel.clone(),
+                monitors: monitors_sel.clone(),
+                mirror: mirror_sel.clone(),
+            };
+            let _ = st.player.send(PlayerCommand::Load(path.clone()));
+            mirror_on_play(&st, path);
+        });
 
         // Limpiar la selección, sin borrar los vídeos de la lista.
         let videos_clear = videos.clone();
@@ -247,7 +318,7 @@ impl PlayerArea {
         video.set_child(Some(embedded.widget()));
         column.append(&video);
 
-        // Controles (~10%).
+        // Controles (~10%). También sincronizan los espejos.
         let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         controls.set_halign(gtk::Align::Center);
         controls.set_margin_top(6);
@@ -259,9 +330,19 @@ impl PlayerArea {
             ("⏹", PlayerCommand::Stop),
         ] {
             let send = player.clone();
+            let mirror_state = self.state.clone();
             let button = gtk::Button::with_label(label);
             button.connect_clicked(move |_| {
                 let _ = send.send(command.clone());
+                let mirror_cmd = match command {
+                    PlayerCommand::Play => Some(mirror::MirrorCmd::Play),
+                    PlayerCommand::Pause => Some(mirror::MirrorCmd::Pause),
+                    PlayerCommand::Stop => Some(mirror::MirrorCmd::Pause),
+                    _ => None,
+                };
+                if let Some(cmd) = mirror_cmd {
+                    mirror_control(&mirror_state, cmd);
+                }
             });
             controls.append(&button);
         }
@@ -272,8 +353,10 @@ impl PlayerArea {
         progress.set_draw_value(false);
         progress.set_hexpand(true);
         let send = player.clone();
+        let mirror_state = self.state.clone();
         progress.connect_change_value(move |_, _, value| {
             let _ = send.send(PlayerCommand::Seek(value * 100.0));
+            mirror_control(&mirror_state, mirror::MirrorCmd::Seek(value * 100.0));
             glib::Propagation::Proceed
         });
         column.append(&progress);
@@ -312,7 +395,7 @@ fn build_monitors(state: &AppState) -> gtk::Box {
     section.append(&hint);
 
     // Fila horizontal de monitores.
-    let mirrors = monitors_row(&state.monitors);
+    let mirrors = monitors_row(state);
     mirrors.set_halign(gtk::Align::Start);
     section.append(&mirrors);
 
@@ -361,11 +444,11 @@ fn detect_monitors(monitors: &Rc<RefCell<MonitorSet>>) {
 }
 
 /// Fila horizontal con una tarjeta por monitor.
-fn monitors_row(monitors: &Rc<RefCell<MonitorSet>>) -> gtk::Box {
+fn monitors_row(state: &AppState) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.set_halign(gtk::Align::Start);
 
-    let set = monitors.borrow();
+    let set = state.monitors.borrow();
     if set.is_empty() {
         let label = gtk::Label::new(Some("No se detectó ningún monitor."));
         label.set_halign(gtk::Align::Start);
@@ -373,13 +456,15 @@ fn monitors_row(monitors: &Rc<RefCell<MonitorSet>>) -> gtk::Box {
         return row;
     }
     for mon in set.iter() {
-        row.append(&monitor_card(mon, monitors));
+        row.append(&monitor_card(mon, state));
     }
     row
 }
 
-/// Tarjeta seleccionable de un monitor.
-fn monitor_card(mon: &Monitor, monitors: &Rc<RefCell<MonitorSet>>) -> gtk::ToggleButton {
+/// Tarjeta seleccionable de un monitor. Al conmutarla se reconcilian los
+/// espejos: abrir el que se selecciona en mitad de la reproducción (alineado a
+/// la posición actual) o cerrar el que se deselecciona.
+fn monitor_card(mon: &Monitor, state: &AppState) -> gtk::ToggleButton {
     let kind = if mon.is_primary() {
         "Principal"
     } else {
@@ -397,9 +482,17 @@ fn monitor_card(mon: &Monitor, monitors: &Rc<RefCell<MonitorSet>>) -> gtk::Toggl
     if mon.is_primary() {
         button.set_sensitive(false);
     } else {
-        let state = monitors.clone();
+        let monitors = state.monitors.clone();
+        let mirror = state.mirror.clone();
+        let player = state.player.clone();
         button.connect_toggled(move |_| {
-            let _ = state.borrow_mut().toggle(&id);
+            let _ = monitors.borrow_mut().toggle(&id);
+            let st = AppState {
+                player: player.clone(),
+                monitors: monitors.clone(),
+                mirror: mirror.clone(),
+            };
+            mirror_reconcile(&st);
         });
     }
     button

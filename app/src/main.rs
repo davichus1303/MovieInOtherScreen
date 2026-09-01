@@ -8,6 +8,7 @@
 
 mod app;
 mod logging;
+mod mirror;
 mod playback;
 mod player;
 mod wayland;

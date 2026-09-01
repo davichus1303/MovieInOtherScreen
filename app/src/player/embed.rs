@@ -16,7 +16,6 @@ use std::cell::RefCell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock};
 
 use gtk::glib;
 use gtk::glib::translate::*;
@@ -29,15 +28,17 @@ use crate::player::mpv_engine::mpv_handle;
 /// Contador global de renders (para diagnóstico del video embebido).
 static RENDER_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// Contador de veces que el update callback reporta un frame nuevo.
-static UPDATE_FRAME_COUNT: AtomicU32 = AtomicU32::new(0);
-
-/// Render context compartido para que el update callback (de otro hilo) pueda
-/// notificar a mpv con `mpv_render_context_update`.
-///
-/// Se guarda como `usize` (dato plano, `Send + Sync`); el puntero solo se
-/// reconstruye y usa en el hilo principal, nunca se desreferencia aquí.
-static RENDER_CTX: OnceLock<Mutex<usize>> = OnceLock::new();
+/// Contexto pasado al update callback de libmpv. Empaqueta el widget y su
+/// render context para que el callback (que corre en el hilo del motor) pueda,
+/// en el hilo principal, llamar a `mpv_render_context_update` sobre el render
+/// context correcto de **esta** instancia (cada ventana/espejo tiene el suyo).
+#[repr(C)]
+struct MpvUpdateCtx {
+    /// La dirección del `GtkGLArea` (como `usize`, dato plano `Send`).
+    widget: usize,
+    /// El `mpv_render_context` de esta instancia.
+    render_ctx: ffi::mpv_render_context_handle,
+}
 
 /// Callback (`mpv_render_context_set_update_callback`) que encola un repintado
 /// del GLArea en el hilo principal. mpv lo invoca desde su propio hilo.
@@ -47,27 +48,22 @@ static RENDER_CTX: OnceLock<Mutex<usize>> = OnceLock::new();
 /// `mpv_render_context_update` (obligatorio para que el VO no se trabe y para
 /// saber si hay frame nuevo) y encolamos el redibujado del GLArea.
 unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
-    // El widget sigue vivo mientras el render context exista; se propaga su
-    // dirección como `usize` (Send) para poder usarla en el hilo principal.
-    let area_addr = cb_ctx as usize;
+    // cb_ctx apunta al `MpvUpdateCtx` de esta instancia (leak intencionado,
+    // se libera en `unrealize`). Se extraen los punteros como `usize` (Send).
+    let widget = unsafe { (*(cb_ctx as *const MpvUpdateCtx)).widget };
+    let render_addr = unsafe { (*(cb_ctx as *const MpvUpdateCtx)).render_ctx as usize };
     let main_ctx = glib::MainContext::default();
     main_ctx.invoke(move || {
         // Notifica a mpv que el frame fue recibido; sin esto el VO se traba y
-        // nunca produce imagen (audio sí, vídeo no).
-        if let Some(rc) = RENDER_CTX.get().and_then(|m| m.lock().ok().map(|g| *g)) {
-            let rc = rc as ffi::mpv_render_context_handle;
-            if !rc.is_null() {
-                let flags = unsafe { ffi::mpv_render_context_update(rc) };
-                if flags & ffi::MPV_RENDER_UPDATE_FRAME != 0 {
-                    let u = UPDATE_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-                    if u % 30 == 0 {
-                        logging::info(format!("[embed] update callback: frame nuevo (u={u} flags={flags})"));
-                    }
-                    unsafe {
-                        let area =
-                            gtk::GLArea::from_glib_none(area_addr as *mut gtk::ffi::GtkGLArea);
-                        area.queue_render();
-                    }
+        // nunca produce imagen (audio sí, vídeo no). Se llama sobre el render
+        // context de ESTA instancia (una por ventana/espejo).
+        let render_ctx = render_addr as ffi::mpv_render_context_handle;
+        if !render_ctx.is_null() {
+            let flags = unsafe { ffi::mpv_render_context_update(render_ctx) };
+            if flags & ffi::MPV_RENDER_UPDATE_FRAME != 0 {
+                unsafe {
+                    let area = gtk::GLArea::from_glib_none(widget as *mut gtk::ffi::GtkGLArea);
+                    area.queue_render();
                 }
             }
         }
@@ -77,6 +73,11 @@ unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
 /// Estado mutable compartido entre el GLArea y los callbacks.
 struct State {
     render_ctx: ffi::mpv_render_context_handle,
+    /// Puntero al `MpvUpdateCtx` de esta instancia (se libera en `unrealize`).
+    update_ctx: *mut MpvUpdateCtx,
+    /// Handle de mpv con el que crear el render context (per-instancia; en la
+    /// ventana principal se rellena con el handle global del motor).
+    handle: Option<ffi::mpv_handle>,
     last_w: i32,
     last_h: i32,
     last_scale: f64,
@@ -110,6 +111,8 @@ impl EmbeddedVideo {
 
         let state = Rc::new(RefCell::new(State {
             render_ctx: std::ptr::null_mut(),
+            update_ctx: std::ptr::null_mut(),
+            handle: None,
             last_w: 0,
             last_h: 0,
             last_scale: 1.0,
@@ -120,6 +123,15 @@ impl EmbeddedVideo {
             state,
         };
         this.connect();
+        this
+    }
+
+    /// Idéntico a [`EmbeddedVideo::new`], pero usa el handle de mpv dado
+    /// (un core propio, p. ej. los espejos de monitores) en lugar del handle
+    /// global del reproductor principal.
+    pub fn with_handle(handle: ffi::mpv_handle) -> Self {
+        let this = Self::new();
+        this.state.borrow_mut().handle = Some(handle);
         this
     }
 
@@ -139,12 +151,18 @@ impl EmbeddedVideo {
             if let Some(ctx) = area.context() {
                 ctx.make_current();
             }
-            state.borrow_mut().render_ctx = std::ptr::null_mut();
+            let mut s = state.borrow_mut();
+            s.render_ctx = std::ptr::null_mut();
         });
 
         let state = self.state.clone();
         gl_area.connect_unrealize(move |_| {
             let mut s = state.borrow_mut();
+            // Libera el `MpvUpdateCtx` leakado y el render context.
+            if !s.update_ctx.is_null() {
+                unsafe { drop(Box::from_raw(s.update_ctx)) };
+                s.update_ctx = std::ptr::null_mut();
+            }
             if !s.render_ctx.is_null() {
                 unsafe { ffi::mpv_render_context_free(s.render_ctx) };
                 s.render_ctx = std::ptr::null_mut();
@@ -170,8 +188,8 @@ impl EmbeddedVideo {
             if s.render_ctx.is_null() {
                 // Inicializa el render context la primera vez que dibujamos.
                 // Requiere el GL context "current" (GTK lo deja así en render)
-                // y el handle del core de mpv ya expuesto por el motor.
-                let handle = match mpv_handle() {
+                // y un handle de core de mpv: el propio (espejos) o el global.
+                let handle = match s.handle.or_else(mpv_handle) {
                     Some(h) => h,
                     None => {
                         // El motor aún no expone el handle (p. ej. el primer
@@ -194,13 +212,19 @@ impl EmbeddedVideo {
                     return glib::Propagation::Proceed;
                 }
                 logging::info("[embed] render context de mpv creado (GLArea GL)");
-                // Se comparte con el update callback para `mpv_render_context_update`.
-                let _ = RENDER_CTX.set(Mutex::new(s.render_ctx as usize));
+                // Empaqueta el widget + este render context para el update
+                // callback (así cada ventana/espejo usa el suyo). Se hace `leak`;
+                // se libera en `unrealize`.
+                let uctx = Box::into_raw(Box::new(MpvUpdateCtx {
+                    widget: widget.as_ptr().cast::<c_void>() as usize,
+                    render_ctx: s.render_ctx,
+                }));
+                s.update_ctx = uctx;
                 unsafe {
                     ffi::mpv_render_context_set_update_callback(
                         s.render_ctx,
                         Some(on_mpv_update),
-                        widget.as_ptr().cast(),
+                        uctx.cast(),
                     );
                 }
             }

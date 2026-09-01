@@ -114,6 +114,20 @@ extern "C" {
     pub fn glXGetProcAddressARB(name: *const c_char) -> *mut c_void;
 }
 
+/// `mpv_format` usado para leer/escribir propiedades en punto flotante.
+pub const MPV_FORMAT_DOUBLE: c_int = 4;
+
+extern "C" {
+    /// Lee una propiedad en formato double (`MPV_FORMAT_DOUBLE`). Devuelve
+    /// `>= 0` en éxito. Seguro para lectura desde cualquier hilo.
+    pub fn mpv_get_property(
+        ctx: super::ffi::mpv_handle,
+        name: *const c_char,
+        format: c_int,
+        data: *mut c_void,
+    ) -> c_int;
+}
+
 /// Resuelve el puntero de una función OpenGL para el callback que pide libmpv
 /// (`mpv_opengl_init_params.get_proc_address`).
 ///
