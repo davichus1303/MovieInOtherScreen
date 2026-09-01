@@ -79,8 +79,6 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
             PlayerCommand::Stop => player.stop(),
             PlayerCommand::Seek(seconds) => player.seek(seconds),
             PlayerCommand::TogglePause => player.toggle_pause(),
-            PlayerCommand::SetAudioDevice(id) => player.set_audio_device(&id),
-            PlayerCommand::ListAudioDevices => player.publish_audio_devices(),
             PlayerCommand::Shutdown => break,
         }
     }
@@ -114,27 +112,6 @@ impl MpvSession {
             paused: false,
         };
         Ok(session)
-    }
-
-    /// Publica la lista de dispositivos de audio hacia la UI. La consulta usa
-    /// FFI directo porque `audio-device-list` es un nodo mpv, no soportado por
-    /// el crate `mpv`.
-    fn publish_audio_devices(&self) {
-        let handle = self.handler.raw().cast();
-        match super::ffi::audio_devices(handle) {
-            Ok(Some(devices)) => {
-                let _ = self.events.send(PlayerEvent::AudioDevices(devices));
-            }
-            Ok(None) => {
-                let _ = self.events.send(PlayerEvent::AudioDevices(Vec::new()));
-            }
-            Err(msg) => {
-                let _ = self.events.send(PlayerEvent::AudioDevices(Vec::new()));
-                let _ = self.events.send(PlayerEvent::PlaybackError(format!(
-                    "No se pudo enumerar los dispositivos de audio: {msg}"
-                )));
-            }
-        }
     }
 
     fn load(&mut self, path: &str) {
@@ -181,12 +158,6 @@ impl MpvSession {
         self.handler.command(&["seek", &arg, "absolute"])
     }
 
-    fn set_audio_device(&mut self, id: &str) {
-        if let Err(err) = self.handler.set_property("audio-device", id) {
-            self.report_error(err);
-        }
-    }
-
     fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
         let _ = self.events.send(PlayerEvent::Paused(paused));
@@ -215,172 +186,4 @@ impl MpvSession {
     }
 }
 
-/// Reduce la lista bruta de `audio-device-list` a los **sinks funcionales**
-/// reales, presentados y nombrados como en las herramientas rápidas de GNOME
-/// (ajuste de sonido / `wpctl`).
-///
-/// `audio-device-list` de mpv enumera todos los backends de audio del sistema
-/// (alsa, pipewire, pulse, jack, sdl, plughw, dmix, sysdefault...). La mayoría
-/// no son salidas utilizables por el usuario: lo son los sinks reales, que
-/// mpv expone bajo el backend `pipewire/` (o `pulse/` como respaldo) con un
-/// id de la forma `alsa_output.<tarjeta>.<ruta>_sink`.
-///
-/// Reglas:
-/// - Conserva únicamente los sinks reales: ids que contienen `alsa_output` y
-///   terminan en `_sink`. Es la misma lista que muestra GNOME.
-/// - Deduplica: cada sink aparece dos veces (backend `pipewire/` y `pulse/`);
-///   se prefiere el `pipewire/` (el valor más moderno en PipeWire), y si no lo
-///   hubiera se usa el `pulse/` como respaldo.
-/// - Nombra con una etiqueta corta, sin el prefijo de tarjeta redundante que
-///   GNOME oculta (p. ej. "HDMI / DisplayPort 1 Output" en vez de "Tiger
-///   Lake-LP Smart Sound Technology Audio Controller HDMI / ... ").
-///
-/// Devuelve `(id, etiqueta)`; `id` es el valor completo que mpv acepta en
-/// `audio-device`.
-pub fn functional_sinks(devices: &[(String, String)]) -> Vec<(String, String)> {
-    let backend = if devices
-        .iter()
-        .any(|(id, _)| id.starts_with("pipewire/"))
-    {
-        "pipewire/"
-    } else {
-        "pulse/"
-    };
 
-    devices
-        .iter()
-        .filter_map(|(id, desc)| {
-            let Some(slug) = id.strip_prefix(backend) else {
-                return None;
-            };
-            if !(slug.contains("alsa_output") && slug.ends_with("_sink")) {
-                return None;
-            }
-            Some((id.clone(), short_label(desc)))
-        })
-        .collect()
-}
-
-/// Quita el prefijo de tarjeta/controlador, dejando el puerto de salida.
-fn short_label(desc: &str) -> String {
-    let desc = desc.trim();
-    for marker in [
-        " Audio Controller ",
-        " Digital Audio ",
-        " Audio ",
-    ] {
-        if let Some(pos) = desc.find(marker) {
-            let after = desc[pos + marker.len()..].trim();
-            if !after.is_empty() {
-                return after.to_string();
-            }
-        }
-    }
-    desc.to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn dev(id: &str, desc: &str) -> (String, String) {
-        (id.to_string(), desc.to_string())
-    }
-
-    #[test]
-    fn filtra_solo_sinks_reales_y_deduplica_pipewire() {
-        let raw = vec![
-            dev("auto", "Autoselect device"),
-            dev(
-                "pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_5__sink",
-                "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 3 Output",
-            ),
-            dev(
-                "pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_3__sink",
-                "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 1 Output",
-            ),
-            dev(
-                "pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink",
-                "Tiger Lake-LP Smart Sound Technology Audio Controller Speaker + Headphones",
-            ),
-            // Duplicado pulse del mismo sink (3) -> debe descartarse
-            dev(
-                "pulse/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_3__sink",
-                "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 1 Output",
-            ),
-            // Backends no-funcionales -> deben descartarse
-            dev("alsa/sysdefault:CARD=sofhdadsp", "sof-hda-dsp /Default Audio Device"),
-            dev("alsa/dmix:CARD=sofhdadsp,DEV=0", "Direct sample mixing device"),
-            dev("jack", "Default (jack)"),
-        ];
-
-        let result = functional_sinks(&raw);
-
-        assert_eq!(result.len(), 3, "debe quedar un areglo por sink: {result:?}");
-        assert!(
-            result.iter().all(|(id, _)| id.starts_with("pipewire/")),
-            "se prefiere pipewire: {result:?}"
-        );
-        assert!(
-            result.iter().all(|(_, label)| !label.contains("Audio Controller")),
-            "etiqueta corta: {result:?}"
-        );
-        assert_eq!(result[0].1, "HDMI / DisplayPort 3 Output");
-        assert_eq!(result[1].1, "HDMI / DisplayPort 1 Output");
-        assert_eq!(result[2].1, "Speaker + Headphones");
-    }
-
-    #[test]
-    fn sin_pipewire_usa_pulse_como_respaldo() {
-        let raw = vec![
-            dev(
-                "pulse/alsa_output.pci._sink",
-                "Some Controller Speaker",
-            ),
-            dev("alsa/plughw:CARD=x", "Hardware"),
-        ];
-        let result = functional_sinks(&raw);
-        assert_eq!(result.len(), 1);
-        assert!(result[0].0.starts_with("pulse/"));
-    }
-}
-
-#[cfg(test)]
-mod real_data_tests {
-    use super::*;
-
-    #[test]
-    fn datos_reales_del_sistema_filtran_a_4_sinks() {
-        // Lista real de `audio-device-list` de este equipo (probe mpvtest):
-        // solo los sinks del hardware deben quedar, con etiqueta corta.
-        let raw: Vec<(String, String)> = vec![
-            ("auto".into(), "Autoselect device".into()),
-            ("pipewire".into(), "Default (pipewire)".into()),
-            ("pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_5__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 3 Output".into()),
-            ("pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_4__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 2 Output".into()),
-            ("pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_3__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 1 Output".into()),
-            ("pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller Speaker + Headphones".into()),
-            ("pulse/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_5__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 3 Output".into()),
-            ("pulse/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_4__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 2 Output".into()),
-            ("pulse/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp_3__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller HDMI / DisplayPort 1 Output".into()),
-            ("pulse/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__hw_sofhdadsp__sink".into(), "Tiger Lake-LP Smart Sound Technology Audio Controller Speaker + Headphones".into()),
-            ("alsa".into(), "Default (alsa)".into()),
-            ("alsa/lavrate".into(), "Rate Converter Plugin Using Libav/FFmpeg Library".into()),
-            ("alsa/plughw:CARD=sofhdadsp,DEV=3".into(), "sof-hda-dsp, Sceptre F24/Hardware device with all software conversions".into()),
-            ("alsa/dmix:CARD=sofhdadsp,DEV=0".into(), "Direct sample mixing device".into()),
-            ("alsa/sysdefault:CARD=sofhdadsp".into(), "Default Audio Device".into()),
-            ("jack".into(), "Default (jack)".into()),
-            ("sdl".into(), "Default (sdl)".into()),
-        ];
-
-        let result = functional_sinks(&raw);
-
-        let labels: Vec<&str> = result.iter().map(|(_, l)| l.as_str()).collect();
-        assert_eq!(result.len(), 4, "solo 4 sinks reales: {labels:?}");
-        assert_eq!(result[0].1, "HDMI / DisplayPort 3 Output");
-        assert_eq!(result[1].1, "HDMI / DisplayPort 2 Output");
-        assert_eq!(result[2].1, "HDMI / DisplayPort 1 Output");
-        assert_eq!(result[3].1, "Speaker + Headphones");
-        assert!(result.iter().all(|(id, _)| id.starts_with("pipewire/")));
-    }
-}

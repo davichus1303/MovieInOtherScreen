@@ -1,142 +1,18 @@
-//! Interfaz FFI mínima sobre libmpv para consultar propiedades en formato
-//! nodo, que el crate `mpv` no expone (solo `bool`/`f64`/`i64`/`&str`).
+//! Interfaz FFI mínima sobre libmpv para la renderización embebida.
 //!
-//! Se declaran únicamente los símbolos y estructuras necesarios para leer
-//! `audio-device-list`: `mpv_get_property` con `MPV_FORMAT_NODE`, y el
-//! recorrido del `mpv_node` resultante. Las definiciones ABI copian
-//! exactamente `/usr/include/mpv/client.h` (API estable de libmpv).
+//! Declara los símbolos y estructuras de `libmpv/render.h` y
+//! `libmpv/render_gl.h` que permiten dibujar la salida de vídeo en una
+//! superficie OpenGL propia (GTK4 `gtk::GLArea`), en lugar de dejar que mpv
+//! abra su propia ventana (`--force-window`). Es el enfoque que usa Celluloid
+//! (`vo=libmpv`). Las definiciones ABI copian exactamente
+//! `/usr/include/mpv/client.h` y `render_gl.h` (API estable de libmpv).
 
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_int, c_void};
 
 #[allow(non_camel_case_types)]
 pub type mpv_handle = *mut c_void;
-#[allow(non_camel_case_types)]
-pub type mpv_format = c_int;
-
-pub const MPV_FORMAT_NODE: mpv_format = 6;
-pub const MPV_FORMAT_NODE_ARRAY: mpv_format = 7;
-pub const MPV_FORMAT_NODE_MAP: mpv_format = 8;
-pub const MPV_FORMAT_STRING: mpv_format = 1;
-
-#[repr(C)]
-pub struct mpv_node {
-    pub u: mpv_node_union,
-    pub format: mpv_format,
-}
-
-#[repr(C)]
-pub union mpv_node_union {
-    pub string: *mut c_char,
-    pub flag: c_int,
-    pub int64: i64,
-    pub double_: c_double,
-    pub list: *mut mpv_node_list,
-    pub ba: *mut mpv_byte_array,
-}
-
-#[repr(C)]
-pub struct mpv_node_list {
-    pub num: c_int,
-    pub values: *mut mpv_node,
-    pub keys: *mut *mut c_char,
-}
-
-#[repr(C)]
-pub struct mpv_byte_array {
-    pub data: *mut c_void,
-    pub size: usize,
-}
-
-extern "C" {
-    fn mpv_get_property(
-        ctx: *mut c_void,
-        name: *const c_char,
-        format: mpv_format,
-        data: *mut c_void,
-    ) -> c_int;
-
-    fn mpv_free_node_contents(node: *mut mpv_node);
-}
-
-/// Lee la lista de dispositivos de audio de mpv (`audio-device-list`) y la
-/// devuelve como parejas `(id, descripción)`.
-///
-/// Devuelve `Ok(None)` si la propiedad existe pero está vacía (sin
-/// dispositivos); `Err(msg)` si no se pudo consultar.
-pub fn audio_devices(handle: mpv_handle) -> Result<Option<Vec<(String, String)>>, String> {
-    let name = CString::new("audio-device-list").expect("literal C a ASCII");
-
-    let mut node = std::mem::MaybeUninit::<mpv_node>::zeroed();
-    let rc = unsafe {
-        mpv_get_property(
-            handle,
-            name.as_ptr(),
-            MPV_FORMAT_NODE,
-            node.as_mut_ptr().cast::<c_void>(),
-        )
-    };
-    if rc < 0 {
-        return Err(format!("mpv_get_property retornó {rc}"));
-    }
-
-    let mut node = unsafe { node.assume_init() };
-    let mut devices = Vec::new();
-
-    unsafe {
-        if node.format != MPV_FORMAT_NODE_ARRAY {
-            mpv_free_node_contents(&mut node);
-            return Err(format!(
-                "audio-device-list no es un array (formato {})",
-                node.format
-            ));
-        }
-
-        let list = node.u.list;
-        let list_ref = &*list;
-        for i in 0..list_ref.num {
-            let value = &*list_ref.values.add(i as usize);
-            if value.format != MPV_FORMAT_NODE_MAP {
-                continue;
-            }
-
-            let mut id: Option<String> = None;
-            let mut desc: Option<String> = None;
-            let map = &*value.u.list;
-            for k in 0..map.num {
-                let key = CStr::from_ptr(*map.keys.add(k as usize));
-                let key_str = key.to_string_lossy().into_owned();
-                let val = &*map.values.add(k as usize);
-                if val.format == MPV_FORMAT_STRING {
-                    let value_str = CStr::from_ptr(val.u.string)
-                        .to_string_lossy()
-                        .into_owned();
-                    match key_str.as_str() {
-                        "name" => id = Some(value_str),
-                        "description" => desc = Some(value_str),
-                        _ => {}
-                    }
-                }
-            }
-            if let Some(id) = id {
-                devices.push((id, desc.unwrap_or_default()));
-            }
-        }
-        mpv_free_node_contents(&mut node);
-    }
-
-    Ok(if devices.is_empty() {
-        None
-    } else {
-        Some(devices)
-    })
-}
 
 // --- Render API (libmpv/render.h + render_gl.h) ----------------------------
-//
-// Permite embeber la salida de vídeo en superficies OpenGL propias (GTK4
-// `gtk::GLArea`), en lugar de dejar que mpv abra su propia ventana
-// (`--force-window`). Es el enfoque que usa Celluloid (vo=libmpv).
 
 #[allow(non_camel_case_types)]
 pub type mpv_render_context = c_void;

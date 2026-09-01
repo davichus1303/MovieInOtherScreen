@@ -26,30 +26,8 @@ use crate::player::{PlayerCommand, PlayerEvent};
 struct AppState {
     /// Comandos hacia el hilo del reproductor.
     player: std::sync::mpsc::Sender<PlayerCommand>,
-    /// Estado del selector de salida de audio.
-    audio: Rc<RefCell<AudioState>>,
     /// Monitores detectados y su selección.
     monitors: Rc<RefCell<MonitorSet>>,
-}
-
-/// Estado del selector de salida de audio.
-struct AudioState {
-    /// Dispositivos `(id, descripción)` reportados por mpv.
-    devices: Vec<(String, String)>,
-    /// IDs en paralelo a las entradas del desplegable; la primera es `auto`.
-    ids: Vec<String>,
-    /// Widget desplegable (referencia para poder actualizarlo).
-    dropdown: Option<gtk::DropDown>,
-}
-
-impl AudioState {
-    fn new() -> Self {
-        Self {
-            devices: Vec::new(),
-            ids: vec!["auto".to_string()],
-            dropdown: None,
-        }
-    }
 }
 
 /// Puerto de entrada de la interfaz.
@@ -58,7 +36,6 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let state = AppState {
         player: cmd_tx.clone(),
-        audio: Rc::new(RefCell::new(AudioState::new())),
         monitors: Rc::new(RefCell::new(MonitorSet::new())),
     };
 
@@ -80,7 +57,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
         .build();
 
     // Lleva los eventos del reproductor al hilo principal.
-    bridge_events_to_gtk(ev_rx, state);
+    bridge_events_to_gtk(ev_rx);
 
     let player_cmd = cmd_tx;
     window.connect_close_request(move |_| {
@@ -112,50 +89,14 @@ fn build_layout(
 
 /// Consume los eventos del reproductor en el hilo principal, sondeando el
 /// canal `std::mpsc` con un temporizador ligero para no bloquear la UI.
-fn bridge_events_to_gtk(rx: std::sync::mpsc::Receiver<PlayerEvent>, state: AppState) {
+///
+/// Por ahora la reproducción se maneja solo por comandos (play, pause, load);
+/// los eventos de posicion no se reflejan aún en la interfaz.
+fn bridge_events_to_gtk(rx: std::sync::mpsc::Receiver<PlayerEvent>) {
     glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-        while let Ok(event) = rx.try_recv() {
-            handle_event(event, &state);
-        }
+        while rx.try_recv().is_ok() {}
         glib::ControlFlow::Continue
     });
-}
-
-fn handle_event(event: PlayerEvent, state: &AppState) {
-    match event {
-        PlayerEvent::AudioDevices(devices) => {
-            // Solo los sinks funcionales, con nombre corto (como en el ajuste
-            // de sonido de GNOME). `ids` debe contener el id completo que mpv
-            // acepta en `audio-device`.
-            let sinks = crate::player::mpv_engine::functional_sinks(&devices);
-            let ids: Vec<String> = std::iter::once("auto".to_string())
-                .chain(sinks.iter().map(|(id, _)| id.clone()))
-                .collect();
-            let labels: Vec<String> = std::iter::once("Predeterminado".to_string())
-                .chain(sinks.iter().map(|(_, label)| label.clone()))
-                .collect();
-
-            // Recolecta primero y suelta el borrow antes de tocar el widget:
-            // `set_model`/`set_selected` disparan `selected_notify` de forma
-            // síncrona, que reentra a `connect_selected_notify` (lee el mismo
-            // RefCell). Mantener el borrow aquí provocaría un doble borrow.
-            let dropdown = {
-                let mut audio = state.audio.borrow_mut();
-                audio.devices = devices;
-                audio.ids = ids;
-                audio.dropdown.clone()
-            };
-
-            if let Some(dropdown) = dropdown {
-                let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
-                let model = gtk::StringList::new(&label_refs);
-                let list_model = model.upcast::<gtk::gio::ListModel>();
-                dropdown.set_model(Some(&list_model));
-                dropdown.set_selected(0);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// --- Sidebar ---
@@ -378,37 +319,6 @@ fn build_monitors(state: &AppState) -> gtk::Box {
     let mirrors = monitors_row(&state.monitors);
     mirrors.set_halign(gtk::Align::Start);
     section.append(&mirrors);
-
-    let audio_title = gtk::Label::new(Some("Salida de audio"));
-    audio_title.set_halign(gtk::Align::Start);
-    section.append(&audio_title);
-
-    let initial = gtk::StringList::new(&["Predeterminado"]);
-    let combo = gtk::DropDown::new(
-        Some(initial.upcast::<gtk::gio::ListModel>()),
-        None::<gtk::Expression>,
-    );
-    combo.set_halign(gtk::Align::Fill);
-    section.append(&combo);
-
-    state.audio.borrow_mut().dropdown = Some(combo.clone());
-
-    // El selector ya existe: pide la lista de dispositivos bajo demanda
-    // (el push inicial del motor podría llegar antes de construirse el widget).
-    let _ = state.player.send(PlayerCommand::ListAudioDevices);
-
-    let audio_state = state.audio.clone();
-    let audio_player = state.player.clone();
-    combo.connect_selected_notify(move |dropdown| {
-        let index = dropdown.selected() as usize;
-        let id = audio_state
-            .borrow()
-            .ids
-            .get(index)
-            .cloned()
-            .unwrap_or_else(|| "auto".to_string());
-        let _ = audio_player.send(PlayerCommand::SetAudioDevice(id));
-    });
 
     section
 }

@@ -28,14 +28,6 @@ pub enum PlayerCommand {
     Seek(f64),
     /// Conmuta play/pausa según el estado actual.
     TogglePause,
-    /// Establece el dispositivo de salida por su id.
-    SetAudioDevice(String),
-    /// Pide la lista actual de dispositivos de salida (`AudioDevices`).
-    ///
-    /// La UI lo envía cuando el selector está construido (pull bajo demanda,
-    /// como hacen fono/termixer), para no depender de un push inicial que
-    /// podría ocurrir antes de que exista el widget.
-    ListAudioDevices,
     /// Solicita terminar el hilo.
     Shutdown,
 }
@@ -47,8 +39,6 @@ pub enum PlayerEvent {
     Duration(f64),
     Paused(bool),
     Ended,
-    /// Lista de dispositivos de audio `(id, descripción)` disponibles.
-    AudioDevices(Vec<(String, String)>),
     PlaybackError(String),
 }
 
