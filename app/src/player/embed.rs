@@ -20,6 +20,7 @@ use gtk::glib;
 use gtk::glib::translate::*;
 use gtk::prelude::*;
 
+use crate::logging;
 use crate::player::ffi::{self, mpv_opengl_fbo, mpv_opengl_init_params, mpv_render_param};
 use crate::player::mpv_engine::mpv_handle;
 
@@ -118,10 +119,20 @@ impl EmbeddedVideo {
             let mut s = state.borrow_mut();
             if s.render_ctx.is_null() {
                 // Inicializa el render context la primera vez que dibujamos.
+                // Requiere el GL context "current" (GTK lo deja así en render)
+                // y el handle del core de mpv ya expuesto por el motor.
                 let handle = match mpv_handle() {
                     Some(h) => h,
                     None => {
-                        eprintln!("[embed] motor mpv aún no listo; sin frame");
+                        // El motor aún no expone el handle (p. ej. el primer
+                        // repintado ocurre antes de arrancar mpv). Se reintenta
+                        // en unos ms para no quedarse sin contexto de render.
+                        eprintln!("[embed] motor mpv aún no listo; reintentando");
+                        logging::warn("Render embebido sin handle de mpv; reintentando");
+                        let w = widget.clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+                            w.queue_draw();
+                        });
                         return glib::Propagation::Proceed;
                     }
                 };
@@ -129,6 +140,7 @@ impl EmbeddedVideo {
                 s.render_ctx = init_render_context(handle, gl_ptr);
                 if s.render_ctx.is_null() {
                     eprintln!("[embed] no se pudo crear el render context");
+                    logging::error("No se pudo crear el contexto de render de mpv (GLArea)");
                     return glib::Propagation::Proceed;
                 }
                 unsafe {
@@ -185,6 +197,7 @@ fn init_render_context(handle: ffi::mpv_handle, gl_ctx: *mut c_void) -> ffi::mpv
     };
     if rc < 0 || res.is_null() {
         eprintln!("[embed] mpv_render_context_create rc={rc}");
+        logging::error(format!("mpv_render_context_create falló con código {rc}"));
         return std::ptr::null_mut();
     }
     res
@@ -217,6 +230,7 @@ fn render_frame(ctx: ffi::mpv_render_context_handle, w: i32, h: i32) {
         let rc = ffi::mpv_render_context_render(ctx, params.as_mut_ptr());
         if rc < 0 {
             eprintln!("[embed] mpv_render_context_render rc={rc}");
+            logging::error(format!("mpv_render_context_render falló con código {rc}"));
         }
     }
 }

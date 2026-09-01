@@ -7,6 +7,8 @@
 //! 3. Delegar la construcción de la interfaz a `app`.
 
 mod app;
+mod logging;
+mod playback;
 mod player;
 mod wayland;
 
@@ -26,9 +28,16 @@ unsafe extern "C" {
 }
 
 fn main() -> glib::ExitCode {
+    logging::info(format!(
+        "Iniciando Movies on Other Screens (PID {})",
+        std::process::id()
+    ));
+
     if !require_wayland() {
+        logging::warn("Entorno gráfico no compatible con Wayland; la app sale.");
         return show_requirement_message_and_exit();
     }
+    logging::info("Entorno Wayland detectado.");
 
     init_locale_for_mpv();
     let application = adw::Application::builder()

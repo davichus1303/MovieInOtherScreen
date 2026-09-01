@@ -188,15 +188,11 @@ impl<'a> Sidebar<'a> {
             );
         });
 
-        // Reproducir el vídeo con doble clic (o Enter) sobre una fila.
+        // Reproducción reutilizable: doble clic / Enter sobre una fila.
+        // (Única vía activa de reproducción en esta iteración.)
         let videos_sel = videos.clone();
         let player_sel = player.clone();
-        list.connect_row_activated(move |_list, row| {
-            if let Some(video) = videos_sel.borrow().get(row.index() as usize) {
-                let path = video.path().to_string_lossy().into_owned();
-                let _ = player_sel.send(PlayerCommand::Load(path));
-            }
-        });
+        crate::playback::connect_double_click(&list, &videos_sel, &player_sel);
 
         // Limpiar la selección, sin borrar los vídeos de la lista.
         let videos_clear = videos.clone();

@@ -20,6 +20,7 @@
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 
+use crate::logging;
 use super::{PlayerCommand, PlayerEvent};
 
 /// Duración (segundos) de la transición gradual al cambiar de vídeo.
@@ -64,12 +65,13 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
     let mut player = match MpvSession::new(&events) {
         Ok(p) => p,
         Err(err) => {
-            let _ = events.send(PlayerEvent::PlaybackError(format!(
-                "No se pudo inicializar el reproductor: {err}"
-            )));
+            let message = format!("No se pudo inicializar el reproductor: {err}");
+            logging::error(&message);
+            let _ = events.send(PlayerEvent::PlaybackError(message));
             return;
         }
     };
+    logging::info("Motor mpv inicializado correctamente.");
 
     for command in commands {
         match command {
@@ -116,7 +118,12 @@ impl MpvSession {
 
     fn load(&mut self, path: &str) {
         self.apply_transition_into();
-        let _ = self.handler.command(&["loadfile", path]);
+        logging::info(format!("Cargando vídeo en el motor mpv: {path}"));
+        if let Err(err) = self.handler.command(&["loadfile", path]) {
+            let message = format!("Error al cargar el vídeo '{path}': {err}");
+            logging::error(&message);
+            self.report_error_str(message);
+        }
     }
 
     fn play(&mut self) {
@@ -180,9 +187,13 @@ impl MpvSession {
     }
 
     fn report_error(&self, err: mpv::Error) {
-        let _ = self
-            .events
-            .send(PlayerEvent::PlaybackError(format!("{err}")));
+        let message = format!("{err}");
+        self.report_error_str(message);
+    }
+
+    fn report_error_str(&self, message: String) {
+        logging::error(&message);
+        let _ = self.events.send(PlayerEvent::PlaybackError(message));
     }
 }
 
