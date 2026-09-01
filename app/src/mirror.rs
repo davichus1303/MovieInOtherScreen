@@ -90,27 +90,56 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
     let _ = handle_tx.send(handler.raw() as usize);
     logging::info("[mirror] core de mpv creado");
 
-    for cmd in rx {
-        match cmd {
-            MirrorCmd::Load(path, pos) => {
-                logging::info(format!("[mirror] cargando {path}"));
-                let _ = handler.command(&["loadfile", &path]);
-                if let Some(p) = pos {
+    // Posición pendiente de aplicar cuando el archivo termine de cargarse.
+    // libmpv ignora un `seek` emitido antes de que el archivo esté cargado, así
+    // que el salto se difiere al evento `FileLoaded` (evita arrancar desde 0
+    // cuando se abre un espejo a mitad de reproducción).
+    let mut pending_seek: Option<f64> = None;
+
+    loop {
+        // Bucle de eventos de mpv (timeout 0 => no bloqueante). Drena la cola
+        // de eventos y detecta cuándo el archivo está listo para saltar.
+        let mut busy = false;
+        while let Some(ev) = handler.wait_event(0.0) {
+            busy = true;
+            if let mpv::Event::FileLoaded = ev {
+                if let Some(p) = pending_seek.take() {
                     let arg = format!("{p}");
                     let _ = handler.command(&["seek", &arg, "absolute"]);
+                    logging::info(format!("[mirror] cargado, saltando a {p}s"));
                 }
-            }
-            MirrorCmd::Play => {
                 let _ = handler.set_property("pause", false);
             }
-            MirrorCmd::Pause => {
+        }
+
+        // Procesa los comandos de la UI (no bloqueante).
+        match rx.try_recv() {
+            Ok(MirrorCmd::Load(path, pos)) => {
+                logging::info(format!("[mirror] cargando {path}"));
+                // Pausa antes de cargar para no arrancar desde 0; el `Play` y
+                // el `seek` real se aplican en `FileLoaded`.
+                let _ = handler.set_property("pause", true);
+                let _ = handler.command(&["loadfile", &path]);
+                pending_seek = pos;
+            }
+            Ok(MirrorCmd::Play) => {
+                let _ = handler.set_property("pause", false);
+            }
+            Ok(MirrorCmd::Pause) => {
                 let _ = handler.set_property("pause", true);
             }
-            MirrorCmd::Seek(p) => {
+            Ok(MirrorCmd::Seek(p)) => {
                 let arg = format!("{p}");
                 let _ = handler.command(&["seek", &arg, "absolute"]);
             }
-            MirrorCmd::Shutdown => break,
+            Ok(MirrorCmd::Shutdown) => break,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+
+        // Pequeña pausa para no saturar la CPU cuando no hay actividad.
+        if !busy {
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
     logging::info("[mirror] core de mpv finalizado");
