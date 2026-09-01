@@ -193,6 +193,8 @@ pub struct MirrorController {
     windows: HashMap<String, MirrorWindow>,
     /// Último archivo reproducido en el reproductor principal.
     current_path: Option<String>,
+    /// Path que ya se cargó en los espejos abiertos (para detectar cambios de video).
+    loaded_path: Option<String>,
 }
 
 impl MirrorController {
@@ -201,6 +203,7 @@ impl MirrorController {
             application: application.clone(),
             windows: HashMap::new(),
             current_path: None,
+            loaded_path: None,
         }
     }
 
@@ -225,7 +228,7 @@ impl MirrorController {
     ///
     /// `pos_base`: posición (segundos) a la que alinear un espejo que se abre
     /// a mitad de reproducción.
-    pub fn reconfigure(&mut self, selected: &[String], _pos_base: Option<f64>) {
+    pub fn reconfigure(&mut self, selected: &[String], pos_base: Option<f64>) {
         let current_path = self.current_path.clone();
 
         // Cerrar los que ya no están seleccionados.
@@ -244,19 +247,29 @@ impl MirrorController {
             return;
         };
 
-        // Cargar el video en TODOS los espejos (nuevos y existentes).
-        // Esto asegura que al cambiar de video, todos los espejos se actualicen.
+        // Detectar si el video cambió (path diferente al ya cargado en espejos).
+        let video_changed = self.path_changed();
+
+        // Cargar el video en espejos nuevos, y en TODOS si el video cambió.
         for id in selected {
             if let Some(w) = self.windows.get(id) {
-                // Espejo ya abierto: recargar con el video nuevo.
-                w.core.send(MirrorCmd::Load(path.clone(), None));
+                if video_changed {
+                    // Video cambió: recargar en TODOS los espejos existentes.
+                    w.core.send(MirrorCmd::Load(path.clone(), pos_base));
+                } else {
+                    // Sin cambio: ya está sincronizado via control commands.
+                    continue;
+                }
             } else if let Some(monitor) = self.resolve_monitor(id) {
-                // Espejo nuevo: abrir y cargar.
+                // Espejo nuevo: abrir y cargar en la posición actual del maestro.
                 let w = MirrorWindow::open(id, &monitor, &self.application);
                 self.windows.insert(id.clone(), w);
-                self.windows[id].core.send(MirrorCmd::Load(path.clone(), None));
+                self.windows[id].core.send(MirrorCmd::Load(path.clone(), pos_base));
             }
         }
+
+        // Marcar path como cargado en espejos.
+        self.mark_path_loaded();
 
         // Iniciar reproducción en todos.
         for w in self.windows.values() {
@@ -267,6 +280,16 @@ impl MirrorController {
     /// Notifica al reproductor principal que se reproducirá `path`.
     pub fn set_playing(&mut self, path: String) {
         self.current_path = Some(path);
+    }
+
+    /// Indica si el path actual difiere del último cargado en los espejos.
+    fn path_changed(&self) -> bool {
+        self.current_path.as_ref() != self.loaded_path.as_ref()
+    }
+
+    /// Marca el path como ya cargado en los espejos.
+    fn mark_path_loaded(&mut self) {
+        self.loaded_path = self.current_path.clone();
     }
 
     /// `true` mientras no haya reproducción activa (sin archivo cargado).
