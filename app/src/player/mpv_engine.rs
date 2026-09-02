@@ -188,7 +188,13 @@ impl MpvSession {
             let message = format!("Error al cargar el vídeo '{path}': {err}");
             logging::error(&message);
             self.report_error_str(message);
+            return;
         }
+        // Con `keep-open=yes`, cuando el vídeo anterior termina mpv deja el
+        // core en pausa; `loadfile` no resetea `pause`, así que el nuevo vídeo
+        // cargaría detenido en el área principal. Se des-pausa explícitamente
+        // (igual que hacen los espejos en `FileLoaded`) para que arranque solo.
+        self.play();
     }
 
     fn play(&mut self) {
