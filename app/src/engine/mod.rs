@@ -27,7 +27,9 @@ impl MpvSession {
         }
 
         let mut builder = mpv::MpvHandlerBuilder::new()?;
-        builder.try_hardware_decoding()?;
+        // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
+        // (dedicada o integrada), sin depender del códec del vídeo.
+        crate::hwaccel::apply_to(&mut builder)?;
         builder.set_option("keep-open", "yes")?;
         builder.set_option("vo", "libmpv")?;
         builder.set_option("audio", "yes")?;

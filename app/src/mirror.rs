@@ -93,6 +93,9 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
         b.set_option("vo", "libmpv")?;
         b.set_option("audio", "no")?;
         b.set_option("keep-open", "yes")?;
+        // Aceleración por hardware (estilo VLC): si hay GPU dedicada o
+        // integrada se decodifica por hardware, sin depender del códec.
+        crate::hwaccel::apply_to(&mut b)?;
         b.build()
     }) {
         Ok(h) => h,
