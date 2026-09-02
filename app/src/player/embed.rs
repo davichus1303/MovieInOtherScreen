@@ -198,9 +198,12 @@ impl EmbeddedVideo {
                         eprintln!("[embed] motor mpv aún no listo; reintentando");
                         logging::warn("Render embebido sin handle de mpv; reintentando");
                         let w = widget.clone();
-                        glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
-                            w.queue_draw();
-                        });
+                        glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(50),
+                            move || {
+                                w.queue_draw();
+                            },
+                        );
                         return glib::Propagation::Proceed;
                     }
                 };
@@ -250,7 +253,10 @@ impl EmbeddedVideo {
 }
 
 /// Crea el `mpv_render_context` para el handle dado y el GL context de GDK.
-fn init_render_context(handle: ffi::mpv_handle, gl_ctx: *mut c_void) -> ffi::mpv_render_context_handle {
+fn init_render_context(
+    handle: ffi::mpv_handle,
+    gl_ctx: *mut c_void,
+) -> ffi::mpv_render_context_handle {
     let api_type = ffi::MPV_RENDER_API_TYPE_OPENGL;
     let mut init_params = mpv_opengl_init_params {
         get_proc_address: Some(gl_get_proc_address),
@@ -273,9 +279,7 @@ fn init_render_context(handle: ffi::mpv_handle, gl_ctx: *mut c_void) -> ffi::mpv
     ];
 
     let mut res: ffi::mpv_render_context_handle = std::ptr::null_mut();
-    let rc = unsafe {
-        ffi::mpv_render_context_create(&mut res as *mut _, handle, params.as_ptr())
-    };
+    let rc = unsafe { ffi::mpv_render_context_create(&mut res as *mut _, handle, params.as_ptr()) };
     if rc < 0 || res.is_null() {
         eprintln!("[embed] mpv_render_context_create rc={rc}");
         logging::error(format!("mpv_render_context_create falló con código {rc}"));

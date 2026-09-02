@@ -18,9 +18,9 @@ use gtk::prelude::*;
 use libadwaita as adw;
 
 use crate::logging;
-use crate::reporting::{self, ErrorKind};
-use crate::player::ffi;
 use crate::player::embed::EmbeddedVideo;
+use crate::player::ffi;
+use crate::reporting::{self, ErrorKind};
 
 /// Comandos que la UI envía al core sincronizado de un espejo.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,7 +53,10 @@ impl MirrorCore {
             .spawn(move || run_mirror(cmd_rx, handle_tx))
             .is_err()
         {
-            reporting::report(ErrorKind::Mirror, "No se pudo crear el hilo del monitor espejo");
+            reporting::report(
+                ErrorKind::Mirror,
+                "No se pudo crear el hilo del monitor espejo",
+            );
             return None;
         }
         let handle = match handle_rx.recv() {
@@ -66,15 +69,15 @@ impl MirrorCore {
                 return None;
             }
         };
-        Some(Self {
-            tx: cmd_tx,
-            handle,
-        })
+        Some(Self { tx: cmd_tx, handle })
     }
 
     fn send(&self, cmd: MirrorCmd) {
         if let Err(err) = self.tx.send(cmd) {
-            reporting::report(ErrorKind::Mirror, format!("No se pudo enviar comando al espejo: {err}"));
+            reporting::report(
+                ErrorKind::Mirror,
+                format!("No se pudo enviar comando al espejo: {err}"),
+            );
         }
     }
 }
@@ -86,17 +89,19 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
         setlocale(LC_NUMERIC, b"C\0".as_ptr());
     }
 
-    let mut handler = match mpv::MpvHandlerBuilder::new()
-        .and_then(|mut b| {
-            b.set_option("vo", "libmpv")?;
-            b.set_option("audio", "no")?;
-            b.set_option("keep-open", "yes")?;
-            b.build()
-        }) {
+    let mut handler = match mpv::MpvHandlerBuilder::new().and_then(|mut b| {
+        b.set_option("vo", "libmpv")?;
+        b.set_option("audio", "no")?;
+        b.set_option("keep-open", "yes")?;
+        b.build()
+    }) {
         Ok(h) => h,
         Err(err) => {
             logging::error(format!("No se pudo crear el espejo de mpv: {err}"));
-            reporting::report(ErrorKind::Mirror, format!("No se pudo iniciar el espejo de mpv: {err}"));
+            reporting::report(
+                ErrorKind::Mirror,
+                format!("No se pudo iniciar el espejo de mpv: {err}"),
+            );
             return;
         }
     };
@@ -285,7 +290,9 @@ impl MirrorController {
                     continue;
                 };
                 self.windows.insert(id.clone(), w);
-                self.windows[id].core.send(MirrorCmd::Load(path.clone(), pos_base));
+                self.windows[id]
+                    .core
+                    .send(MirrorCmd::Load(path.clone(), pos_base));
             }
         }
 

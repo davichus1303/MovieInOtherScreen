@@ -45,7 +45,7 @@ impl Config {
 /// Ubicación del fichero de configuración según las convenciones XDG.
 pub fn config_file_path(xdg_config_home: impl AsRef<Path>) -> PathBuf {
     let base = xdg_config_home.as_ref();
-    let name = format!("movies-on-other-screens.conf");
+    let name = "movies-on-other-screens.conf".to_string();
     base.join(name)
 }
 

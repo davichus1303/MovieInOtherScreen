@@ -72,10 +72,7 @@ fn init_locale_for_mpv() {
 
 /// Devuelve `true` si debe continuar la ejecución (entorno Wayland).
 fn require_wayland() -> bool {
-    matches!(
-        wayland::detect_backend(),
-        wayland::GraphicsBackend::Wayland
-    )
+    matches!(wayland::detect_backend(), wayland::GraphicsBackend::Wayland)
 }
 
 /// Muestra el mensaje de requisito y termina con un código de salida claro.

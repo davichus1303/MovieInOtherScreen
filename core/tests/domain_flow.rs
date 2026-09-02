@@ -7,7 +7,7 @@
 use mos_core::audio::{AudioDevice, AudioDevices};
 use mos_core::config::{self, keys};
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
-use mos_core::player::{Command, PlaybackController, PlaybackNav, PlayState, VideoListRef};
+use mos_core::player::{Command, PlayState, PlaybackController, PlaybackNav, VideoListRef};
 use mos_core::segments::Segment;
 use mos_core::video_list::{Video, VideoList};
 use std::path::PathBuf;
@@ -97,11 +97,7 @@ fn flujo_completo_monitores_y_audio_persisten() {
 #[test]
 fn flujo_un_solo_monitor_funciona_sin_secundarios() {
     let mut monitors = MonitorSet::new();
-    monitors.update_from_detected(vec![monitor(
-        "eDP-1",
-        "Monitor 1",
-        MonitorKind::Primary,
-    )]);
+    monitors.update_from_detected(vec![monitor("eDP-1", "Monitor 1", MonitorKind::Primary)]);
     assert!(monitors.only_primary());
     assert!(!monitors.has_secondaries());
 }

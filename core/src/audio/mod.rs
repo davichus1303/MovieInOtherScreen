@@ -1,6 +1,5 @@
 //! Selección de dispositivo de audio (lógica de dominio pura).
 
-use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 
 /// Dispositivo de salida de audio.
@@ -13,12 +12,22 @@ pub struct AudioDevice {
 
 impl AudioDevice {
     pub fn new(id: String, label: String, is_default: bool) -> Self {
-        Self { id, label, is_default }
+        Self {
+            id,
+            label,
+            is_default,
+        }
     }
 
-    pub fn id(&self) -> &str { &self.id }
-    pub fn label(&self) -> &str { &self.label }
-    pub fn is_default(&self) -> bool { self.is_default }
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+    pub fn is_default(&self) -> bool {
+        self.is_default
+    }
 }
 
 /// Conjunto de dispositivos de audio detectados.
@@ -42,8 +51,12 @@ impl AudioDevices {
         self.devices.iter().find(|d| d.id() == id)
     }
 
-    pub fn len(&self) -> usize { self.devices.len() }
-    pub fn is_empty(&self) -> bool { self.devices.is_empty() }
+    pub fn len(&self) -> usize {
+        self.devices.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.devices.is_empty()
+    }
 
     pub fn update_detected(&mut self, devices: Vec<AudioDevice>) {
         self.devices = devices;

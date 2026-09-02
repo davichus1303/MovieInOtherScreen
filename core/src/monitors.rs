@@ -241,7 +241,9 @@ mod tests {
 
     #[test]
     fn monitor_desconectado_se_pierde_seleccion() {
-        let mut set = MonitorSet { monitors: Vec::new() };
+        let mut set = MonitorSet {
+            monitors: Vec::new(),
+        };
         set.update_from_detected(vec![
             m("eDP-1", "Monitor 1", MonitorKind::Primary),
             m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
@@ -255,7 +257,9 @@ mod tests {
 
     #[test]
     fn reconexion_conserva_seleccion() {
-        let mut set = MonitorSet { monitors: Vec::new() };
+        let mut set = MonitorSet {
+            monitors: Vec::new(),
+        };
         set.update_from_detected(vec![
             m("eDP-1", "Monitor 1", MonitorKind::Primary),
             m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),

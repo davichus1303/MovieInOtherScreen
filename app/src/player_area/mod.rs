@@ -82,7 +82,9 @@ impl Timeline {
                 None => return glib::Propagation::Proceed,
             };
             let _ = send.send(crate::player::PlayerCommand::Seek(seconds));
-            mirror.borrow_mut().control(crate::mirror::MirrorCmd::Seek(seconds));
+            mirror
+                .borrow_mut()
+                .control(crate::mirror::MirrorCmd::Seek(seconds));
             glib::Propagation::Proceed
         });
     }
@@ -129,13 +131,19 @@ pub fn build_controls(
             // Stop detiene (pausa) y regresa al inicio en los espejos, igual
             // que en el reproductor principal.
             if command == crate::player::PlayerCommand::Stop {
-                mirror_state.borrow_mut().control(crate::mirror::MirrorCmd::Pause);
-                mirror_state.borrow_mut().control(crate::mirror::MirrorCmd::Seek(0.0));
+                mirror_state
+                    .borrow_mut()
+                    .control(crate::mirror::MirrorCmd::Pause);
+                mirror_state
+                    .borrow_mut()
+                    .control(crate::mirror::MirrorCmd::Seek(0.0));
             } else {
                 let mirror_cmd = match command {
                     crate::player::PlayerCommand::Play => Some(crate::mirror::MirrorCmd::Play),
                     crate::player::PlayerCommand::Pause => Some(crate::mirror::MirrorCmd::Pause),
-                    crate::player::PlayerCommand::Seek(pos) => Some(crate::mirror::MirrorCmd::Seek(pos)),
+                    crate::player::PlayerCommand::Seek(pos) => {
+                        Some(crate::mirror::MirrorCmd::Seek(pos))
+                    }
                     _ => None,
                 };
                 if let Some(cmd) = mirror_cmd {

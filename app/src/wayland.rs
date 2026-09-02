@@ -92,7 +92,10 @@ mod tests {
     #[test]
     fn x11_con_wayland_pero_sin_display_detecta_wayland() {
         clean_env();
-        with_env(&[("XDG_SESSION_TYPE", "x11"), ("WAYLAND_DISPLAY", "wayland-0")]);
+        with_env(&[
+            ("XDG_SESSION_TYPE", "x11"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ]);
         assert_eq!(detect_backend(), GraphicsBackend::Wayland);
     }
 

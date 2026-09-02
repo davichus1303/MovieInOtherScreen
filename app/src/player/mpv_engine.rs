@@ -20,8 +20,8 @@
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 
-use crate::logging;
 use super::{PlayerCommand, PlayerEvent};
+use crate::logging;
 
 /// Duración (segundos) de la transición gradual al cambiar de vídeo.
 pub const TRANSITION_SECONDS: f64 = 3.0;
@@ -168,8 +168,9 @@ impl MpvSession {
         let handler = builder.build()?;
 
         // Exponer el handle al renderer embebido de la UI.
-        let _ = RENDER_HANDLE
-            .set(Mutex::new(Some(MpvHandle(handler.raw() as super::ffi::mpv_handle))));
+        let _ = RENDER_HANDLE.set(Mutex::new(Some(MpvHandle(
+            handler.raw() as super::ffi::mpv_handle
+        ))));
 
         let session = Self {
             handler,
@@ -239,14 +240,12 @@ impl MpvSession {
     /// secuencia; como aproximación correcta y no brusca se aplica un fundido
     /// de entrada de vídeo y audio al cargar el nuevo elemento.
     fn apply_transition_into(&mut self) {
-        let _ = self.handler.command(&[
-            "af",
-            &format!("fade in:st=0:d={TRANSITION_SECONDS}"),
-        ]);
-        let _ = self.handler.command(&[
-            "vf",
-            &format!("fade in:st=0:d={TRANSITION_SECONDS}"),
-        ]);
+        let _ = self
+            .handler
+            .command(&["af", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+        let _ = self
+            .handler
+            .command(&["vf", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
     }
 
     fn report_error(&self, err: mpv::Error) {
@@ -259,5 +258,3 @@ impl MpvSession {
         let _ = self.events.send(PlayerEvent::PlaybackError(message));
     }
 }
-
-

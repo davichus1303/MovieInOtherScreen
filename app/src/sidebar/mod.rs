@@ -8,12 +8,12 @@ use gtk::prelude::*;
 
 use libadwaita as adw;
 
-use mos_core::video_list::VideoList;
 use mos_core::monitors::MonitorSet;
+use mos_core::video_list::VideoList;
 
-use crate::player::{PlayerCommand, PlayerEvent};
-use crate::events::AppState;
 use crate::events::mirror_on_play;
+use crate::events::AppState;
+use crate::player::{PlayerCommand, PlayerEvent};
 
 /// Estado necesario para construir el sidebar.
 pub struct SidebarDeps {
@@ -71,25 +71,25 @@ fn connect_video_list(
     // CRITICAL: Clone EVERYTHING from deps UPFRONT before ANY closures
     // This avoids capturing `deps` (a reference) in 'static closures
     // ============================================================
-    
+
     // Pre-clone everything from deps
     let videos = deps.videos.clone();
     let player = deps.player.clone();
     let mirror = deps.mirror.clone();
     let monitors = deps.monitors.clone();
     let list_clone = list.clone();
-    
+
     // --- For add_button closure ---
     let videos_for_add = videos.clone();
     let list_for_add = list_clone.clone();
-    
+
     // --- For row_activated closure ---
     let videos_for_row = videos.clone();
     let player_for_row = player.clone();
     let mirror_for_row = mirror.clone();
     let monitors_for_row = monitors.clone();
     let list_for_row = list_clone.clone();
-    
+
     // --- For clear_button closure ---
     let videos_for_clear = videos.clone();
     let list_for_clear = list_clone.clone();
@@ -114,7 +114,7 @@ fn connect_video_list(
         let videos_for_dialog = videos_for_add.clone();
         let list_for_dialog = list_for_add.clone();
         let list_for_add_closure = list_for_add.clone();
-        
+
         let dialog = gtk::FileDialog::builder()
             .title("Seleccionar vídeos")
             .modal(true)
@@ -122,35 +122,31 @@ fn connect_video_list(
             .build();
         dialog.set_filters(Some(&filters));
 
-        dialog.open_multiple(
-            Some(&window),
-            None::<&gtk::gio::Cancellable>,
-            {
-                let videos_for_add_closure = videos_for_add.clone();
-                let list_for_add_closure_inner = list_for_add_closure.clone();
-                move |result| {
-                    let Ok(model) = result else {
-                        return;
-                    };
-                    let new_videos: Vec<_> = model
-                        .iter::<gtk::gio::File>()
-                        .filter_map(Result::ok)
-                        .filter_map(|f| f.path())
-                        .map(mos_core::video_list::Video::new)
-                        .collect();
-                    if !new_videos.is_empty() {
-                        let value = videos_for_add_closure.clone();
-                        value.borrow_mut().add(new_videos);
-                        rebuild_list(&list_for_add_closure_inner, &value);
-                    }
+        dialog.open_multiple(Some(&window), None::<&gtk::gio::Cancellable>, {
+            let videos_for_add_closure = videos_for_add.clone();
+            let list_for_add_closure_inner = list_for_add_closure.clone();
+            move |result| {
+                let Ok(model) = result else {
+                    return;
+                };
+                let new_videos: Vec<_> = model
+                    .iter::<gtk::gio::File>()
+                    .filter_map(Result::ok)
+                    .filter_map(|f| f.path())
+                    .map(mos_core::video_list::Video::new)
+                    .collect();
+                if !new_videos.is_empty() {
+                    let value = videos_for_add_closure.clone();
+                    value.borrow_mut().add(new_videos);
+                    rebuild_list(&list_for_add_closure_inner, &value);
                 }
-            },
-        );
+            }
+        });
     });
 
     // --- row_activated closure ---
     let list_for_row = list_clone.clone();
-    
+
     list_for_row.connect_row_activated(move |_list, row| {
         let path = {
             let borrowed = videos_for_row.borrow();

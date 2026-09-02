@@ -19,12 +19,12 @@ use libadwaita as adw;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 use mos_core::video_list::VideoList;
 
-use crate::mirror;
-use crate::player::{PlayerCommand, PlayerEvent};
-use crate::sidebar;
-use crate::player_area::{self, Timeline};
 use crate::events;
+use crate::mirror;
 use crate::monitor_widget;
+use crate::player::{PlayerCommand, PlayerEvent};
+use crate::player_area::{self, Timeline};
+use crate::sidebar;
 
 /// Estado compartido por toda la interfaz.
 #[derive(Clone)]

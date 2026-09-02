@@ -2,10 +2,10 @@
 
 use gtk::prelude::*;
 
-use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
+use crate::events::AppState;
 use crate::mirror::MirrorController;
 use crate::player::PlayerCommand;
-use crate::events::AppState;
+use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 
 /// Estado necesario para construir widgets de monitores.
 pub struct MonitorDeps {
@@ -59,7 +59,11 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
             return;
         }
     };
-    for item in display.monitors().iter::<gtk::gdk::Monitor>().filter_map(Result::ok) {
+    for item in display
+        .monitors()
+        .iter::<gtk::gdk::Monitor>()
+        .filter_map(Result::ok)
+    {
         let label = item
             .model()
             .map(|s| s.to_string())
