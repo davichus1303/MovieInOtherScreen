@@ -23,7 +23,6 @@ use crate::mirror;
 use crate::player::{PlayerCommand, PlayerEvent};
 use crate::sidebar;
 use crate::player_area::{self, Timeline};
-use crate::audio;
 use crate::events;
 use crate::monitor_widget;
 
@@ -131,7 +130,6 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
     });
-    monitors.set_vexpand(true);
     column.append(&monitors);
 
     (column, timeline)

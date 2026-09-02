@@ -16,6 +16,8 @@ pub struct MonitorDeps {
 
 /// Construye la sección completa de monitores (título + hint + fila).
 pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
+    detect_monitors(&deps.monitors);
+
     let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     section.set_margin_top(8);
     section.set_margin_bottom(12);
@@ -41,6 +43,51 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     section.append(&mirrors);
 
     section
+}
+
+/// Detecta los monitores del sistema (GDK) y actualiza el conjunto lógico.
+fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
+    let mut found: Vec<(gtk::gdk::Rectangle, String)> = Vec::new();
+    let display = match gtk::gdk::Display::default() {
+        Some(d) => d,
+        None => {
+            crate::reporting::report(
+                crate::reporting::ErrorKind::Monitors,
+                "No se pudo acceder a la pantalla (GDK) para detectar monitores",
+            );
+            monitors.borrow_mut().update_from_detected(Vec::new());
+            return;
+        }
+    };
+    for item in display.monitors().iter::<gtk::gdk::Monitor>().filter_map(Result::ok) {
+        let label = item
+            .model()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "Monitor".to_string());
+        found.push((item.geometry(), label));
+    }
+
+    // El principal es el que contiene el origen (0,0); si no hay ninguno,
+    // se toma el primero.
+    let primary_index = found
+        .iter()
+        .position(|(g, _)| g.x() == 0 && g.y() == 0)
+        .unwrap_or(0);
+
+    let detected: Vec<Monitor> = found
+        .into_iter()
+        .enumerate()
+        .map(|(i, (_g, label))| {
+            let kind = if i == primary_index {
+                MonitorKind::Primary
+            } else {
+                MonitorKind::Secondary
+            };
+            Monitor::new(format!("gdk-{i}"), label, kind)
+        })
+        .collect();
+
+    monitors.borrow_mut().update_from_detected(detected);
 }
 
 /// Fila horizontal con una tarjeta por monitor.

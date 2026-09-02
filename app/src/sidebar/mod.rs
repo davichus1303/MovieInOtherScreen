@@ -1,4 +1,4 @@
-//! Sidebar de la aplicación: lista de videos, monitores y selector de audio.
+//! Sidebar de la aplicación: lista de vídeos y sus botones (agregar / limpiar).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,10 +11,7 @@ use libadwaita as adw;
 use mos_core::video_list::VideoList;
 use mos_core::monitors::MonitorSet;
 
-use crate::mirror;
 use crate::player::{PlayerCommand, PlayerEvent};
-use crate::audio::AudioSection;
-use crate::monitor_widget;
 use crate::events::AppState;
 use crate::events::mirror_on_play;
 
@@ -26,7 +23,7 @@ pub struct SidebarDeps {
     pub monitors: Rc<RefCell<MonitorSet>>,
 }
 
-/// Construye la barra lateral completa (videos + monitores + audio).
+/// Construye la barra lateral: lista de vídeos con sus botones.
 pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 8);
     sidebar.set_margin_top(12);
@@ -59,33 +56,6 @@ pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
 
     // Conexiones de la lista de videos
     connect_video_list(&list, &add_button, &clear_button, &deps);
-
-    let separator2 = gtk::Separator::new(gtk::Orientation::Horizontal);
-    sidebar.append(&separator2);
-
-    // --- Sección de monitores ---
-    let monitors_header = gtk::Label::new(Some("Monitores"));
-    monitors_header.add_css_class("title-4");
-    monitors_header.set_halign(gtk::Align::Start);
-    sidebar.append(&monitors_header);
-
-    let monitors_widget = monitor_widget::build_monitors_section(&monitor_widget::MonitorDeps {
-        player: deps.player.clone(),
-        mirror: deps.mirror.clone(),
-        monitors: deps.monitors.clone(),
-    });
-    sidebar.append(&monitors_widget);
-
-    let separator3 = gtk::Separator::new(gtk::Orientation::Horizontal);
-    sidebar.append(&separator3);
-
-    // --- Sección de audio ---
-    let audio_deps = crate::audio::AudioDeps {
-        player: deps.player.clone(),
-        mirror: deps.mirror.clone(),
-    };
-    let audio_section = crate::audio::AudioSection::new(&audio_deps);
-    sidebar.append(&audio_section.build());
 
     sidebar
 }
