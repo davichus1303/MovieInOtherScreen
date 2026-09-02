@@ -54,7 +54,14 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let video_list = Rc::new(RefCell::new(VideoList::new()));
     let (content, timeline) = build_layout(&video_list, &state);
-    toolbar.set_content(Some(&content));
+
+    // Overlay de toasts: los errores de la app se muestran aquí como mensajes
+    // emergentes (el canal de reporting se conecta al mismo tiempo).
+    let toast_overlay = adw::ToastOverlay::new();
+    toast_overlay.set_child(Some(&content));
+    crate::reporting::attach(&toast_overlay);
+
+    toolbar.set_content(Some(&toast_overlay));
 
     let window = adw::ApplicationWindow::builder()
         .application(application)

@@ -18,6 +18,7 @@ use gtk::prelude::*;
 use libadwaita as adw;
 
 use crate::logging;
+use crate::reporting::{self, ErrorKind};
 use crate::player::ffi;
 use crate::player::embed::EmbeddedVideo;
 
@@ -43,26 +44,37 @@ struct MirrorCore {
 }
 
 impl MirrorCore {
-    fn spawn() -> Self {
+    fn spawn() -> Option<Self> {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<MirrorCmd>();
         // Canal por el que el hilo devuelve su handle una vez creado (usize).
         let (handle_tx, handle_rx) = std::sync::mpsc::channel::<usize>();
-        std::thread::Builder::new()
+        if std::thread::Builder::new()
             .name("mpv-mirror".into())
             .spawn(move || run_mirror(cmd_rx, handle_tx))
-            .expect("el hilo del espejo debe poder crearse");
-        let handle = handle_rx
-            .recv()
-            .expect("el hilo del espejo debe enviar su handle") as ffi::mpv_handle;
-        Self {
+            .is_err()
+        {
+            reporting::report(ErrorKind::Mirror, "No se pudo crear el hilo del monitor espejo");
+            return None;
+        }
+        let handle = match handle_rx.recv() {
+            Ok(h) => h as ffi::mpv_handle,
+            Err(_) => {
+                reporting::report(
+                    ErrorKind::Mirror,
+                    "El monitor espejo terminó antes de poder iniciarse",
+                );
+                return None;
+            }
+        };
+        Some(Self {
             tx: cmd_tx,
             handle,
-        }
+        })
     }
 
     fn send(&self, cmd: MirrorCmd) {
         if let Err(err) = self.tx.send(cmd) {
-            logging::error(format!("No se pudo enviar comando al espejo: {err}"));
+            reporting::report(ErrorKind::Mirror, format!("No se pudo enviar comando al espejo: {err}"));
         }
     }
 }
@@ -84,6 +96,7 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
         Ok(h) => h,
         Err(err) => {
             logging::error(format!("No se pudo crear el espejo de mpv: {err}"));
+            reporting::report(ErrorKind::Mirror, format!("No se pudo iniciar el espejo de mpv: {err}"));
             return;
         }
     };
@@ -162,10 +175,12 @@ impl MirrorWindow {
     /// Abre una ventana fullscreen en el monitor `monitor` para el espejo dado.
     ///
     /// `monitor` ya está resuelto a su `gdk::Monitor` real por el controlador.
-    fn open(id: &str, monitor: &gtk::gdk::Monitor, application: &adw::Application) -> Self {
-        let core = MirrorCore::spawn();
+    /// Devuelve `None` si no se pudo crear el core de mpv del espejo.
+    fn open(id: &str, monitor: &gtk::gdk::Monitor, application: &adw::Application) -> Option<Self> {
+        let core = MirrorCore::spawn()?;
         if core.handle.is_null() {
-            logging::error(format!("[mirror] espejo {id}: sin handle de mpv"));
+            reporting::report(ErrorKind::Mirror, format!("espejo {id}: sin handle de mpv"));
+            return None;
         }
         let video = EmbeddedVideo::with_handle(core.handle);
 
@@ -177,7 +192,7 @@ impl MirrorWindow {
         window.fullscreen_on_monitor(monitor);
         window.present();
 
-        Self { window, core }
+        Some(Self { window, core })
     }
 
     fn close(&self) {
@@ -262,7 +277,13 @@ impl MirrorController {
                 }
             } else if let Some(monitor) = self.resolve_monitor(id) {
                 // Espejo nuevo: abrir y cargar en la posición actual del maestro.
-                let w = MirrorWindow::open(id, &monitor, &self.application);
+                let Some(w) = MirrorWindow::open(id, &monitor, &self.application) else {
+                    reporting::report(
+                        ErrorKind::Mirror,
+                        format!("No se pudo abrir el espejo del monitor {id}"),
+                    );
+                    continue;
+                };
                 self.windows.insert(id.clone(), w);
                 self.windows[id].core.send(MirrorCmd::Load(path.clone(), pos_base));
             }

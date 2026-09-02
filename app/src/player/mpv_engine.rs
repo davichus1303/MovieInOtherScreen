@@ -67,6 +67,7 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
         Err(err) => {
             let message = format!("No se pudo inicializar el reproductor: {err}");
             logging::error(&message);
+            crate::reporting::report(crate::reporting::ErrorKind::Player, &message);
             let _ = events.send(PlayerEvent::PlaybackError(message));
             return;
         }

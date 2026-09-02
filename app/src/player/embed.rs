@@ -209,6 +209,10 @@ impl EmbeddedVideo {
                 if s.render_ctx.is_null() {
                     eprintln!("[embed] no se pudo crear el render context");
                     logging::error("No se pudo crear el contexto de render de mpv (GLArea)");
+                    crate::reporting::report(
+                        crate::reporting::ErrorKind::Player,
+                        "No se pudo crear el contexto de render del vídeo",
+                    );
                     return glib::Propagation::Proceed;
                 }
                 logging::info("[embed] render context de mpv creado (GLArea GL)");
@@ -275,6 +279,10 @@ fn init_render_context(handle: ffi::mpv_handle, gl_ctx: *mut c_void) -> ffi::mpv
     if rc < 0 || res.is_null() {
         eprintln!("[embed] mpv_render_context_create rc={rc}");
         logging::error(format!("mpv_render_context_create falló con código {rc}"));
+        crate::reporting::report(
+            crate::reporting::ErrorKind::Player,
+            format!("No se pudo crear el contexto de render de mpv (código {rc})"),
+        );
         return std::ptr::null_mut();
     }
     res

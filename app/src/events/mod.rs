@@ -21,6 +21,9 @@ pub fn bridge_events_to_gtk(
                 PlayerEvent::Position(pos) => timeline.borrow().update_position(pos),
                 PlayerEvent::Duration(dur) => timeline.borrow_mut().update_duration(dur),
                 PlayerEvent::Ended => timeline.borrow().update_position(0.0),
+                PlayerEvent::PlaybackError(msg) => {
+                    crate::reporting::report(crate::reporting::ErrorKind::Player, msg);
+                }
                 _ => {}
             }
         }
