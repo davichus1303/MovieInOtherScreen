@@ -1,5 +1,7 @@
 /*! Progress bar segments and their mapping from keyboard and click. */
 
+use crate::constants::segments::MAX_FRACTION_CLAMP;
+
 /** Number of segments the bar is conceptually divided into. */
 pub const SEGMENT_COUNT: u32 = 10;
 
@@ -48,7 +50,7 @@ impl TryFrom<u32> for Segment {
  */
 impl From<f64> for Segment {
     fn from(fraction: f64) -> Self {
-        let f = fraction.clamp(0.0, 0.999_999);
+        let f = fraction.clamp(0.0, MAX_FRACTION_CLAMP);
         let nth = (f * f64::from(SEGMENT_COUNT)).floor() as u32 + 1;
         Segment(nth.min(SEGMENT_COUNT))
     }

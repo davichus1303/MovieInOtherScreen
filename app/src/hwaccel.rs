@@ -15,14 +15,20 @@
  * It checks for the presence of any DRM render node
  * (`/dev/dri/renderD*`), which both dedicated cards (AMD, NVIDIA) and
  * integrated ones (Intel/AMD iGPU) expose when the driver is loaded. It is the
- * same mechanism libva/VA-API uses to locate the decoding device.
+ *  same mechanism libva/VA-API uses to locate the decoding device.
  */
+use crate::constants::hwaccel::{
+    DRM_DEV_DIR, DRM_RENDER_NODE_PREFIX, OPT_HWDEC, OPT_HWDEC_AUTO, OPT_HWDEC_NO,
+};
+
 pub fn has_gpu() -> bool {
-    std::fs::read_dir("/dev/dri")
+    std::fs::read_dir(DRM_DEV_DIR)
         .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .any(|e| e.file_name().to_string_lossy().starts_with("renderD"))
+            entries.filter_map(Result::ok).any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(DRM_RENDER_NODE_PREFIX)
+            })
         })
         .unwrap_or(false)
 }
@@ -37,8 +43,8 @@ pub fn has_gpu() -> bool {
  */
 pub fn apply_to(builder: &mut mpv::MpvHandlerBuilder) -> mpv::Result<()> {
     if has_gpu() {
-        builder.set_option("hwdec", "auto")
+        builder.set_option(OPT_HWDEC, OPT_HWDEC_AUTO)
     } else {
-        builder.set_option("hwdec", "no")
+        builder.set_option(OPT_HWDEC, OPT_HWDEC_NO)
     }
 }

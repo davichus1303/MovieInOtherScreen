@@ -21,6 +21,7 @@ use libadwaita as adw;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 use mos_core::video_list::VideoList;
 
+use crate::constants::app;
 use crate::events;
 use crate::mirror;
 use crate::monitor_widget;
@@ -51,7 +52,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&gtk::Label::new(Some("Movies on Other Screens"))));
+    header.set_title_widget(Some(&gtk::Label::new(Some(app::APP_TITLE))));
     toolbar.add_top_bar(&header);
 
     let video_list = Rc::new(RefCell::new(VideoList::new()));
@@ -67,9 +68,9 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let window = adw::ApplicationWindow::builder()
         .application(application)
-        .title("Movies on Other Screens")
-        .default_width(1200)
-        .default_height(760)
+        .title(app::APP_TITLE)
+        .default_width(app::WINDOW_DEFAULT_WIDTH)
+        .default_height(app::WINDOW_DEFAULT_HEIGHT)
         .content(&toolbar)
         .build();
 
@@ -108,15 +109,15 @@ fn build_layout(
     // Área de reproducción: vídeo + controles + timeline + monitores
     let (area, timeline) = build_player_area(state);
     paned.set_end_child(Some(&area));
-    paned.set_position(360);
+    paned.set_position(app::SIDEBAR_INITIAL_POSITION);
 
-    let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let root = gtk::Box::new(gtk::Orientation::Horizontal, app::ROOT_BOX_SPACING);
     root.append(&paned);
     (root, timeline)
 }
 
 fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
-    let video = gtk::Frame::new(Some("Vídeo"));
+    let video = gtk::Frame::new(Some(app::LABEL_VIDEO_FRAME));
     video.set_vexpand(true);
     video.set_valign(gtk::Align::Fill);
     video.set_hexpand(true);
@@ -128,7 +129,7 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
     let (timeline_row, timeline) = player_area::Timeline::new();
     Timeline::connect_seek(&timeline, state.player.clone(), state.mirror.clone());
 
-    let column = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let column = gtk::Box::new(gtk::Orientation::Vertical, app::MAIN_COLUMN_SPACING);
     column.append(&video);
     column.append(&controls);
     column.append(&timeline_row);

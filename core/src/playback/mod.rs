@@ -6,6 +6,8 @@
 
 use std::sync::mpsc::{Receiver, Sender};
 
+use crate::constants::playback::ENGINE_THREAD_NAME;
+
 /** High-level playback commands (domain language). */
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlaybackCmd {
@@ -92,7 +94,7 @@ pub fn spawn_playback_engine(
     _event_tx: Sender<PlaybackEvent>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
-        .name("playback-engine".into())
+        .name(ENGINE_THREAD_NAME.into())
         .spawn(move || {
             // Implementación concreta (mpv) iría aquí
             // Por ahora es un stub

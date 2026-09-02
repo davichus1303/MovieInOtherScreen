@@ -6,6 +6,7 @@ use std::rc::Rc;
 use gtk::glib;
 use gtk::prelude::*;
 
+use crate::constants::player_area;
 use crate::player::PlayerCommand;
 
 /** Timeline state (progress bar + time labels). */
@@ -19,16 +20,24 @@ pub struct Timeline {
 
 impl Timeline {
     pub fn new() -> (gtk::Box, Rc<RefCell<Self>>) {
-        let bar = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+        let bar = gtk::Scale::with_range(
+            gtk::Orientation::Horizontal,
+            0.0,
+            player_area::SCALE_MAX_PERCENT,
+            player_area::SCALE_STEP,
+        );
         bar.set_draw_value(false);
         bar.set_hexpand(true);
 
-        let pos_label = gtk::Label::new(Some("00:00"));
-        pos_label.add_css_class("caption");
-        let dur_label = gtk::Label::new(Some("00:00"));
-        dur_label.add_css_class("caption");
+        let pos_label = gtk::Label::new(Some(player_area::TIME_LABEL_ZERO));
+        pos_label.add_css_class(player_area::CSS_CAPTION);
+        let dur_label = gtk::Label::new(Some(player_area::TIME_LABEL_ZERO));
+        dur_label.add_css_class(player_area::CSS_CAPTION);
 
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let row = gtk::Box::new(
+            gtk::Orientation::Horizontal,
+            player_area::layout::ROW_SPACING,
+        );
         row.append(&pos_label);
         row.append(&bar);
         row.append(&dur_label);
@@ -47,7 +56,7 @@ impl Timeline {
     pub fn update_position(&self, pos: f64) {
         self.pos_label.set_label(&fmt_time(pos));
         let frac = if self.duration > 0.0 {
-            (pos / self.duration).clamp(0.0, 1.0)
+            (pos / self.duration).clamp(player_area::FRAC_CLAMP_MIN, player_area::FRAC_CLAMP_MAX)
         } else {
             0.0
         };
@@ -63,7 +72,7 @@ impl Timeline {
         if self.duration <= 0.0 {
             return None;
         }
-        Some((value / 100.0) * self.duration)
+        Some((value / player_area::SCALE_MAX_PERCENT) * self.duration)
     }
 
     /**
@@ -95,16 +104,21 @@ impl Timeline {
 /** Formats a duration in seconds as `mm:ss` (or `hh:mm:ss` when applicable). */
 pub fn fmt_time(secs: f64) -> String {
     if !secs.is_finite() || secs < 0.0 {
-        return "00:00".to_string();
+        return player_area::TIME_LABEL_ZERO.to_string();
     }
     let total = secs as u64;
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
+    let h = total / player_area::SECS_PER_HOUR;
+    let m = (total % player_area::SECS_PER_HOUR) / player_area::SECS_PER_MINUTE;
+    let s = total % player_area::SECS_PER_MINUTE;
     if h > 0 {
-        format!("{h:02}:{m:02}:{s:02}")
+        player_area::TIME_HMS_FORMAT
+            .replace("{h:02}", &format!("{:02}", h))
+            .replace("{m:02}", &format!("{:02}", m))
+            .replace("{s:02}", &format!("{:02}", s))
     } else {
-        format!("{m:02}:{s:02}")
+        player_area::TIME_MS_FORMAT
+            .replace("{m:02}", &format!("{:02}", m))
+            .replace("{s:02}", &format!("{:02}", s))
     }
 }
 
@@ -116,16 +130,31 @@ pub fn build_controls(
     player: &std::sync::mpsc::Sender<crate::player::PlayerCommand>,
     mirror: std::rc::Rc<std::cell::RefCell<crate::mirror::MirrorController>>,
 ) -> gtk::Box {
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let controls = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        player_area::layout::CONTROLS_SPACING,
+    );
     controls.set_halign(gtk::Align::Center);
-    controls.set_margin_top(6);
-    controls.set_margin_bottom(6);
+    controls.set_margin_top(player_area::layout::CONTROLS_MARGIN_TOP);
+    controls.set_margin_bottom(player_area::layout::CONTROLS_MARGIN_BOTTOM);
 
     for (label, command) in [
-        ("⏮", crate::player::PlayerCommand::Seek(0.0)),
-        ("▶", crate::player::PlayerCommand::Play),
-        ("⏸", crate::player::PlayerCommand::Pause),
-        ("⏹", crate::player::PlayerCommand::Stop),
+        (
+            player_area::controls::ICON_SEEK_START,
+            crate::player::PlayerCommand::Seek(0.0),
+        ),
+        (
+            player_area::controls::ICON_PLAY,
+            crate::player::PlayerCommand::Play,
+        ),
+        (
+            player_area::controls::ICON_PAUSE,
+            crate::player::PlayerCommand::Pause,
+        ),
+        (
+            player_area::controls::ICON_STOP,
+            crate::player::PlayerCommand::Stop,
+        ),
     ] {
         let send = player.clone();
         let mirror_state = mirror.clone();

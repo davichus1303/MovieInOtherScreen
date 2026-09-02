@@ -7,6 +7,7 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::prelude::*;
 
+use crate::constants::audio;
 use crate::mirror::MirrorController;
 use crate::player::PlayerCommand;
 use mos_core::audio::{AudioDevice, AudioDevices};
@@ -27,7 +28,7 @@ pub struct AudioSection {
 
 impl AudioSection {
     pub fn new(deps: &AudioDeps) -> Self {
-        let model = gtk::StringList::new(&["Cargando…"]);
+        let model = gtk::StringList::new(&[audio::LABEL_LOADING]);
         let combo = gtk::DropDown::new(Some(model.clone()), None::<&gtk::Expression>);
         combo.set_halign(gtk::Align::Start);
         combo.set_hexpand(true);
@@ -56,60 +57,64 @@ impl AudioSection {
         let mirror = deps.mirror.clone();
 
         // Periodic detection
-        glib::timeout_add_local(std::time::Duration::from_millis(5000), move || {
-            // Real detection would happen here
-            // For now, use mock devices
-            let devices = vec![
-                AudioDevice::new(
-                    "alsa_output.pci-0000_00_1f.3.analog-stereo".into(),
-                    "Speakers".into(),
-                    true,
-                ),
-                AudioDevice::new(
-                    "alsa_output.pci-0000_01_00.1.hdmi-stereo".into(),
-                    "HDMI".into(),
-                    false,
-                ),
-            ];
+        glib::timeout_add_local(
+            std::time::Duration::from_millis(audio::DETECTION_INTERVAL_MS as u64),
+            move || {
+                // Real detection would happen here
+                // For now, use mock devices
+                let devices = vec![
+                    AudioDevice::new(
+                        audio::mock::DEVICE_SPEAKERS.into(),
+                        audio::mock::LABEL_SPEAKERS.into(),
+                        true,
+                    ),
+                    AudioDevice::new(
+                        audio::mock::DEVICE_HDMI.into(),
+                        audio::mock::LABEL_HDMI.into(),
+                        false,
+                    ),
+                ];
 
-            // Update model
-            let new_model = gtk::StringList::new(&[]);
-            for device in &devices {
-                new_model.append(&format!("{} ({})", device.label(), device.id()));
-            }
-            combo.set_model(Some(&new_model));
-
-            // Set default selection
-            if let Some(default) = devices.iter().find(|d| d.is_default()) {
-                if let Some(idx) = devices.iter().position(|d| d.id() == default.id()) {
-                    combo.set_selected(idx as u32);
+                // Update model
+                let new_model = gtk::StringList::new(&[]);
+                for device in &devices {
+                    new_model.append(
+                        &audio::ITEM_FORMAT
+                            .replacen("{}", device.label(), 1)
+                            .replacen("{}", device.id(), 1),
+                    );
                 }
-            }
+                combo.set_model(Some(&new_model));
 
-            combo.set_sensitive(true);
-            glib::ControlFlow::Continue
-        });
+                // Set default selection
+                if let Some(default) = devices.iter().find(|d| d.is_default()) {
+                    if let Some(idx) = devices.iter().position(|d| d.id() == default.id()) {
+                        combo.set_selected(idx as u32);
+                    }
+                }
+
+                combo.set_sensitive(true);
+                glib::ControlFlow::Continue
+            },
+        );
     }
 
     pub fn build(self) -> gtk::Box {
-        let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        section.set_margin_top(8);
-        section.set_margin_bottom(12);
-        section.set_margin_start(12);
-        section.set_margin_end(12);
+        let section = gtk::Box::new(gtk::Orientation::Vertical, audio::layout::SECTION_SPACING);
+        section.set_margin_top(audio::layout::MARGIN_TOP);
+        section.set_margin_bottom(audio::layout::MARGIN_BOTTOM);
+        section.set_margin_start(audio::layout::MARGIN_START);
+        section.set_margin_end(audio::layout::MARGIN_END);
 
-        let title = gtk::Label::new(Some("Salida de audio"));
+        let title = gtk::Label::new(Some(audio::LABEL_SECTION_TITLE));
         title.set_halign(gtk::Align::Start);
-        title.add_css_class("title-4");
+        title.add_css_class(audio::CSS_TITLE);
         section.append(&title);
 
-        let hint = gtk::Label::new(Some(
-            "Dispositivo por el que se escucha la reproducción. Si no aparece \
-             ninguno, se usa el predeterminado del sistema.",
-        ));
+        let hint = gtk::Label::new(Some(audio::HINT_DESCRIPTION));
         hint.set_halign(gtk::Align::Start);
         hint.set_wrap(true);
-        hint.set_max_width_chars(60);
+        hint.set_max_width_chars(audio::layout::HINT_MAX_WIDTH_CHARS);
         section.append(&hint);
 
         section.append(&self.combo);

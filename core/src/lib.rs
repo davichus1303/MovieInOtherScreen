@@ -8,6 +8,7 @@
 
 pub mod audio;
 pub mod config;
+pub mod constants;
 pub mod mirror;
 pub mod monitors;
 pub mod playback;

@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use gtk::glib;
 
+use crate::constants::events::BRIDGE_INTERVAL_MS;
 use crate::player::{PlayerCommand, PlayerEvent};
 
 use crate::mirror::MirrorController;
@@ -15,20 +16,23 @@ pub fn bridge_events_to_gtk(
     rx: std::sync::mpsc::Receiver<PlayerEvent>,
     timeline: Rc<RefCell<crate::player_area::Timeline>>,
 ) {
-    glib::timeout_add_local(std::time::Duration::from_millis(33), move || {
-        while let Ok(event) = rx.try_recv() {
-            match event {
-                PlayerEvent::Position(pos) => timeline.borrow().update_position(pos),
-                PlayerEvent::Duration(dur) => timeline.borrow_mut().update_duration(dur),
-                PlayerEvent::Ended => timeline.borrow().update_position(0.0),
-                PlayerEvent::PlaybackError(msg) => {
-                    crate::reporting::report(crate::reporting::ErrorKind::Player, msg);
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(BRIDGE_INTERVAL_MS as u64),
+        move || {
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    PlayerEvent::Position(pos) => timeline.borrow().update_position(pos),
+                    PlayerEvent::Duration(dur) => timeline.borrow_mut().update_duration(dur),
+                    PlayerEvent::Ended => timeline.borrow().update_position(0.0),
+                    PlayerEvent::PlaybackError(msg) => {
+                        crate::reporting::report(crate::reporting::ErrorKind::Player, msg);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-        glib::ControlFlow::Continue
-    });
+            glib::ControlFlow::Continue
+        },
+    );
 }
 
 /** Plays a video on the main player and opens mirrors on selected monitors. */

@@ -11,6 +11,7 @@ use libadwaita as adw;
 use mos_core::monitors::MonitorSet;
 use mos_core::video_list::VideoList;
 
+use crate::constants::sidebar;
 use crate::events::mirror_on_play;
 use crate::events::AppState;
 use crate::player::{PlayerCommand, PlayerEvent};
@@ -25,26 +26,29 @@ pub struct SidebarDeps {
 
 /** Builds the side bar: video list with its buttons. */
 pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
-    let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    sidebar.set_margin_top(12);
-    sidebar.set_margin_bottom(12);
-    sidebar.set_margin_start(12);
-    sidebar.set_margin_end(12);
-    sidebar.set_width_request(280);
+    let sidebar = gtk::Box::new(gtk::Orientation::Vertical, sidebar::layout::SPACING);
+    sidebar.set_margin_top(sidebar::layout::MARGIN_TOP);
+    sidebar.set_margin_bottom(sidebar::layout::MARGIN_BOTTOM);
+    sidebar.set_margin_start(sidebar::layout::MARGIN_START);
+    sidebar.set_margin_end(sidebar::layout::MARGIN_END);
+    sidebar.set_width_request(sidebar::layout::WIDTH_REQUEST);
 
     // --- Sección de videos ---
-    let videos_header = gtk::Label::new(Some("Archivos de video"));
-    videos_header.add_css_class("title-4");
+    let videos_header = gtk::Label::new(Some(sidebar::LABEL_VIDEOS_TITLE));
+    videos_header.add_css_class(sidebar::CSS_TITLE);
     videos_header.set_halign(gtk::Align::Start);
     sidebar.append(&videos_header);
 
-    let buttons_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let buttons_row = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        sidebar::layout::BUTTONS_ROW_SPACING,
+    );
     buttons_row.set_halign(gtk::Align::Start);
 
-    let add_button = gtk::Button::with_label("＋ Agregar videos");
+    let add_button = gtk::Button::with_label(sidebar::LABEL_ADD_BUTTON);
     buttons_row.append(&add_button);
 
-    let clear_button = gtk::Button::with_label("Limpiar");
+    let clear_button = gtk::Button::with_label(sidebar::LABEL_CLEAR_BUTTON);
     buttons_row.append(&clear_button);
 
     sidebar.append(&buttons_row);
@@ -104,10 +108,8 @@ fn connect_video_list(
 
         let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
         let filter = gtk::FileFilter::new();
-        filter.set_name(Some("Vídeos"));
-        for pattern in [
-            "*.mp4", "*.mkv", "*.webm", "*.avi", "*.mov", "*.m4v", "*.ogv", "*.ts", "*.m2ts",
-        ] {
+        filter.set_name(Some(sidebar::FILE_FILTER_NAME));
+        for pattern in sidebar::VIDEO_EXTENSIONS {
             filter.add_pattern(pattern);
         }
         filters.append(&filter);
@@ -118,9 +120,9 @@ fn connect_video_list(
         let list_for_add_closure = list_for_add.clone();
 
         let dialog = gtk::FileDialog::builder()
-            .title("Seleccionar vídeos")
+            .title(sidebar::DIALOG_TITLE_OPEN)
             .modal(true)
-            .accept_label("Seleccionar")
+            .accept_label(sidebar::DIALOG_ACCEPT_LABEL)
             .build();
         dialog.set_filters(Some(&filters));
 

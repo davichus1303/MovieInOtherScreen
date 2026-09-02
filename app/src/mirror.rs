@@ -24,6 +24,11 @@ use crate::player::embed::EmbeddedVideo;
 use crate::player::ffi;
 use crate::reporting::{self, ErrorKind};
 
+use crate::constants::mirror::{self, *};
+use crate::constants::monitors;
+use crate::constants::mpv::*;
+use crate::constants::player;
+
 /** Commands the UI sends to a mirror's synchronized core. */
 #[derive(Debug, Clone, PartialEq)]
 pub enum MirrorCmd {
@@ -53,23 +58,17 @@ impl MirrorCore {
         // Canal por el que el hilo devuelve su handle una vez creado (usize).
         let (handle_tx, handle_rx) = std::sync::mpsc::channel::<usize>();
         if std::thread::Builder::new()
-            .name("mpv-mirror".into())
+            .name(mirror::THREAD_NAME.into())
             .spawn(move || run_mirror(cmd_rx, handle_tx))
             .is_err()
         {
-            reporting::report(
-                ErrorKind::Mirror,
-                "No se pudo crear el hilo del monitor espejo",
-            );
+            reporting::report(ErrorKind::Mirror, mirror::messages::THREAD_CREATE_FAIL);
             return None;
         }
         let handle = match handle_rx.recv() {
             Ok(h) => h as ffi::mpv_handle,
             Err(_) => {
-                reporting::report(
-                    ErrorKind::Mirror,
-                    "El monitor espejo terminó antes de poder iniciarse",
-                );
+                reporting::report(ErrorKind::Mirror, mirror::messages::TERMINATED_EARLY);
                 return None;
             }
         };
@@ -80,7 +79,7 @@ impl MirrorCore {
         if let Err(err) = self.tx.send(cmd) {
             reporting::report(
                 ErrorKind::Mirror,
-                format!("No se pudo enviar comando al espejo: {err}"),
+                format!("{}{err}", mirror::messages::SEND_FAIL),
             );
         }
     }
@@ -90,13 +89,13 @@ impl MirrorCore {
 fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
     // libmpv exige LC_NUMERIC en "C" (evita MPV_ERROR_NOMEM).
     unsafe {
-        setlocale(LC_NUMERIC, b"C\0".as_ptr());
+        setlocale(player::LC_NUMERIC, b"C\0".as_ptr());
     }
 
     let mut handler = match mpv::MpvHandlerBuilder::new().and_then(|mut b| {
-        b.set_option("vo", "libmpv")?;
-        b.set_option("audio", "no")?;
-        b.set_option("keep-open", "yes")?;
+        b.set_option(OPT_VO, VALUE_VO_LIBMPV)?;
+        b.set_option(OPT_AUDIO, VALUE_NO)?;
+        b.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
         // Aceleración por hardware (estilo VLC): si hay GPU dedicada o
         // integrada se decodifica por hardware, sin depender del códec.
         crate::hwaccel::apply_to(&mut b)?;
@@ -104,16 +103,16 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
     }) {
         Ok(h) => h,
         Err(err) => {
-            logging::error(format!("No se pudo crear el espejo de mpv: {err}"));
+            logging::error(format!("{}{err}", mirror::messages::CORE_CREATE_FAIL));
             reporting::report(
                 ErrorKind::Mirror,
-                format!("No se pudo iniciar el espejo de mpv: {err}"),
+                format!("{}{err}", mirror::messages::CORE_INIT_FAIL),
             );
             return;
         }
     };
     let _ = handle_tx.send(handler.raw() as usize);
-    logging::info("[mirror] core de mpv creado");
+    logging::info(mirror::logs::CORE_CREATED);
 
     // Posición pendiente de aplicar cuando el archivo termine de cargarse.
     // libmpv ignora un `seek` emitido antes de que el archivo esté cargado, así
@@ -125,37 +124,41 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
         // Bucle de eventos de mpv (timeout 0 => no bloqueante). Drena la cola
         // de eventos y detecta cuándo el archivo está listo para saltar.
         let mut busy = false;
-        while let Some(ev) = handler.wait_event(0.0) {
+        while let Some(ev) = handler.wait_event(mirror::EVENT_POLL_TIMEOUT_SECS) {
             busy = true;
             if let mpv::Event::FileLoaded = ev {
                 if let Some(p) = pending_seek.take() {
                     let arg = format!("{p}");
-                    let _ = handler.command(&["seek", &arg, "absolute"]);
-                    logging::info(format!("[mirror] cargado, saltando a {p}s"));
+                    let _ = handler.command(&[CMD_SEEK, &arg, SEEK_MODE_ABSOLUTE]);
+                    logging::info(format!(
+                        "{}{p}{}",
+                        mirror::logs::LOAD_SEEK_PREFIX,
+                        mirror::LOG_SEEK_SUFFIX
+                    ));
                 }
-                let _ = handler.set_property("pause", false);
+                let _ = handler.set_property(PROP_PAUSE, false);
             }
         }
 
         // Procesa los comandos de la UI (no bloqueante).
         match rx.try_recv() {
             Ok(MirrorCmd::Load(path, pos)) => {
-                logging::info(format!("[mirror] cargando {path}"));
+                logging::info(format!("{}{path}", mirror::logs::LOADING_PREFIX));
                 // Pausa antes de cargar para no arrancar desde 0; el `Play` y
                 // el `seek` real se aplican en `FileLoaded`.
-                let _ = handler.set_property("pause", true);
-                let _ = handler.command(&["loadfile", &path]);
+                let _ = handler.set_property(PROP_PAUSE, true);
+                let _ = handler.command(&[CMD_LOADFILE, &path]);
                 pending_seek = pos;
             }
             Ok(MirrorCmd::Play) => {
-                let _ = handler.set_property("pause", false);
+                let _ = handler.set_property(PROP_PAUSE, false);
             }
             Ok(MirrorCmd::Pause) => {
-                let _ = handler.set_property("pause", true);
+                let _ = handler.set_property(PROP_PAUSE, true);
             }
             Ok(MirrorCmd::Seek(p)) => {
                 let arg = format!("{p}");
-                let _ = handler.command(&["seek", &arg, "absolute"]);
+                let _ = handler.command(&[CMD_SEEK, &arg, SEEK_MODE_ABSOLUTE]);
             }
             Ok(MirrorCmd::Shutdown) => break,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
@@ -164,14 +167,12 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
 
         // Pequeña pausa para no saturar la CPU cuando no hay actividad.
         if !busy {
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(mirror::IDLE_SLEEP_MS));
         }
     }
-    logging::info("[mirror] core de mpv finalizado");
+    logging::info(mirror::logs::CORE_ENDED);
 }
 
-// LC_NUMERIC (POSIX).
-const LC_NUMERIC: i32 = 1;
 #[link(name = "c")]
 unsafe extern "C" {
     fn setlocale(category: i32, locale: *const u8) -> *mut u8;
@@ -193,7 +194,14 @@ impl MirrorWindow {
     fn open(id: &str, monitor: &gtk::gdk::Monitor, application: &adw::Application) -> Option<Self> {
         let core = MirrorCore::spawn()?;
         if core.handle.is_null() {
-            reporting::report(ErrorKind::Mirror, format!("espejo {id}: sin handle de mpv"));
+            reporting::report(
+                ErrorKind::Mirror,
+                format!(
+                    "{}{id}{}",
+                    mirror::messages::NO_HANDLE_PREFIX,
+                    mirror::messages::NO_HANDLE_SUFFIX
+                ),
+            );
             return None;
         }
         let video = EmbeddedVideo::with_handle(core.handle);
@@ -358,7 +366,10 @@ impl MirrorController {
 
     /** Resolves the real `gdk::Monitor` from the logical id `gdk-{i}`. */
     fn resolve_monitor(&self, id: &str) -> Option<gtk::gdk::Monitor> {
-        let idx = id.strip_prefix("gdk-")?.parse::<usize>().ok()?;
+        let idx = id
+            .strip_prefix(monitors::ID_PREFIX)?
+            .parse::<usize>()
+            .ok()?;
         let display = gtk::gdk::Display::default()?;
         let monitors: Vec<gtk::gdk::Monitor> = display
             .monitors()
