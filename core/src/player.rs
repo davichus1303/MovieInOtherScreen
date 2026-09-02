@@ -15,7 +15,9 @@ pub enum Command {
     /// Busca a una posición normalizada [0.0, 1.0] del vídeo actual.
     Seek(f64),
     /// Busca a un segmento concreto (tecla/clic).
-    SeekSegment { segment: u32 },
+    SeekSegment {
+        segment: u32,
+    },
     /// Cambia el vídeo actual al siguiente de la secuencia.
     Next,
     /// Cambia el vídeo actual al anterior de la secuencia.
@@ -23,17 +25,12 @@ pub enum Command {
 }
 
 /// Estado de reproducción del vídeo actual.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlayState {
+    #[default]
     Stopped,
     Playing,
     Paused,
-}
-
-impl Default for PlayState {
-    fn default() -> Self {
-        Self::Stopped
-    }
 }
 
 /// Resultado de la última operación de navegación a nivel de reproductor.
@@ -217,7 +214,10 @@ mod tests {
     fn primer_video_anterior_no_hace_nada() {
         let mut c = PlaybackController::new();
         c.handoff(0, PlayState::Playing);
-        assert_eq!(c.apply(Command::Previous, &list(4)), PlaybackNav::Impossible);
+        assert_eq!(
+            c.apply(Command::Previous, &list(4)),
+            PlaybackNav::Impossible
+        );
         assert_eq!(c.current_index(), Some(0));
     }
 

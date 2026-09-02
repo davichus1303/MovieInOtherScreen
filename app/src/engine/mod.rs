@@ -69,29 +69,27 @@ impl MpvSession {
     fn handle_mpv_event(&mut self, ev: mpv::Event) {
         use mpv::Event;
         match ev {
-            mpv::Event::PropertyChange { name, change, .. } => {
-                match name.as_ref() {
-                    "time-pos" => {
-                        if let mpv::Format::Double(pos) = change {
-                            self.state.update_position(pos);
-                            let _ = self.events.send(PlaybackEvent::Position(pos));
-                        }
+            mpv::Event::PropertyChange { name, change, .. } => match name.as_ref() {
+                "time-pos" => {
+                    if let mpv::Format::Double(pos) = change {
+                        self.state.update_position(pos);
+                        let _ = self.events.send(PlaybackEvent::Position(pos));
                     }
-                    "duration" => {
-                        if let mpv::Format::Double(dur) = change {
-                            self.state.update_duration(dur);
-                            let _ = self.events.send(PlaybackEvent::Duration(dur));
-                        }
-                    }
-                    "pause" => {
-                        if let mpv::Format::Flag(paused) = change {
-                            self.state.set_paused(paused);
-                            let _ = self.events.send(PlaybackEvent::Paused(paused));
-                        }
-                    }
-                    _ => {}
                 }
-            }
+                "duration" => {
+                    if let mpv::Format::Double(dur) = change {
+                        self.state.update_duration(dur);
+                        let _ = self.events.send(PlaybackEvent::Duration(dur));
+                    }
+                }
+                "pause" => {
+                    if let mpv::Format::Flag(paused) = change {
+                        self.state.set_paused(paused);
+                        let _ = self.events.send(PlaybackEvent::Paused(paused));
+                    }
+                }
+                _ => {}
+            },
             mpv::Event::EndFile(res) => {
                 if res.is_ok() {
                     let _ = self.events.send(PlaybackEvent::Ended);
@@ -168,11 +166,12 @@ impl MpvSession {
     }
 
     fn set_audio_device(&mut self, id: &str) {
-        let full_id = if id.starts_with("pipewire/") || id.starts_with("pulse/") || id.starts_with("alsa/") {
-            id.to_string()
-        } else {
-            format!("pipewire/{id}")
-        };
+        let full_id =
+            if id.starts_with("pipewire/") || id.starts_with("pulse/") || id.starts_with("alsa/") {
+                id.to_string()
+            } else {
+                format!("pipewire/{id}")
+            };
         if let Err(err) = self.handler.set_property("audio-device", full_id.as_str()) {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
@@ -182,22 +181,17 @@ impl MpvSession {
 
     fn apply_transition(&mut self) {
         const TRANSITION_SECONDS: f64 = 3.0;
-        let _ = self.handler.command(&[
-            "af",
-            &format!("fade in:st=0:d={TRANSITION_SECONDS}"),
-        ]);
-        let _ = self.handler.command(&[
-            "vf",
-            &format!("fade in:st=0:d={TRANSITION_SECONDS}"),
-        ]);
+        let _ = self
+            .handler
+            .command(&["af", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+        let _ = self
+            .handler
+            .command(&["vf", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
     }
 }
 
 /// Punto de entrada para el hilo del motor mpv.
-fn run_mpv_engine(
-    cmd_rx: Receiver<PlaybackCmd>,
-    events: Sender<PlaybackEvent>,
-) {
+fn run_mpv_engine(cmd_rx: Receiver<PlaybackCmd>, events: Sender<PlaybackEvent>) {
     let mut session = match MpvSession::new(&events) {
         Ok(s) => s,
         Err(err) => {

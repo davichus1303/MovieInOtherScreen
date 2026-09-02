@@ -16,6 +16,7 @@ mod monitor_widget;
 mod playback;
 mod player;
 mod player_area;
+mod reporting;
 mod sidebar;
 mod wayland;
 
@@ -35,6 +36,7 @@ unsafe extern "C" {
 }
 
 fn main() -> glib::ExitCode {
+    install_panic_hook();
     logging::info(format!(
         "Iniciando Movies on Other Screens (PID {})",
         std::process::id()
@@ -70,14 +72,28 @@ fn init_locale_for_mpv() {
 
 /// Devuelve `true` si debe continuar la ejecución (entorno Wayland).
 fn require_wayland() -> bool {
-    matches!(
-        wayland::detect_backend(),
-        wayland::GraphicsBackend::Wayland
-    )
+    matches!(wayland::detect_backend(), wayland::GraphicsBackend::Wayland)
 }
 
 /// Muestra el mensaje de requisito y termina con un código de salida claro.
 fn show_requirement_message_and_exit() -> glib::ExitCode {
     eprintln!("{}", wayland::REQUIREMENT_MESSAGE);
     glib::ExitCode::from(1)
+}
+
+/// Instala un manejador de pánico global que registra y notifica cualquier
+/// fallo inesperado (p. ej. el cierre inesperado al deseleccionar un monitor)
+/// en los logs y en la interfaz, en lugar de que la app se cierre en silencio.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "pánico desconocido".to_string());
+        crate::reporting::report(crate::reporting::ErrorKind::Internal, format!("{payload}"));
+    }));
 }

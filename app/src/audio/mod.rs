@@ -7,8 +7,8 @@ use std::time::Duration;
 use gtk::glib;
 use gtk::prelude::*;
 
-use crate::player::PlayerCommand;
 use crate::mirror::MirrorController;
+use crate::player::PlayerCommand;
 use mos_core::audio::{AudioDevice, AudioDevices};
 
 /// Estado necesario para la sección de audio.
@@ -28,10 +28,7 @@ pub struct AudioSection {
 impl AudioSection {
     pub fn new(deps: &AudioDeps) -> Self {
         let model = gtk::StringList::new(&["Cargando…"]);
-        let combo = gtk::DropDown::new(
-            Some(model.clone()),
-            None::<&gtk::Expression>,
-        );
+        let combo = gtk::DropDown::new(Some(model.clone()), None::<&gtk::Expression>);
         combo.set_halign(gtk::Align::Start);
         combo.set_hexpand(true);
         combo.set_sensitive(false);
@@ -74,21 +71,21 @@ impl AudioSection {
                     false,
                 ),
             ];
-            
+
             // Update model
             let new_model = gtk::StringList::new(&[]);
             for device in &devices {
                 new_model.append(&format!("{} ({})", device.label(), device.id()));
             }
             combo.set_model(Some(&new_model));
-            
+
             // Set default selection
             if let Some(default) = devices.iter().find(|d| d.is_default()) {
                 if let Some(idx) = devices.iter().position(|d| d.id() == default.id()) {
                     combo.set_selected(idx as u32);
                 }
             }
-            
+
             combo.set_sensitive(true);
             glib::ControlFlow::Continue
         });

@@ -88,7 +88,7 @@ pub enum EngineEvent {
 /// Inicia el motor de reproducción en un hilo dedicado.
 pub fn spawn_playback_engine(
     cmd_rx: Receiver<PlaybackCmd>,
-    event_tx: Sender<PlaybackEvent>,
+    _event_tx: Sender<PlaybackEvent>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("playback-engine".into())
@@ -97,10 +97,10 @@ pub fn spawn_playback_engine(
             // Por ahora es un stub
             loop {
                 if let Ok(cmd) = cmd_rx.recv() {
-                    match cmd {
-                        PlaybackCmd::Shutdown => break,
-                        _ => {} // Forward to mpv handler
+                    if cmd == PlaybackCmd::Shutdown {
+                        break;
                     }
+                    // Resto de comandos se reenviarían al manejador de mpv
                 }
             }
         })

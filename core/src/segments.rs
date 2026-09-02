@@ -102,9 +102,6 @@ mod tests {
 
     #[test]
     fn tecla_fuera_de_rango_error() {
-        assert_eq!(
-            Segment::try_from(10),
-            Err(SegmentError::OutOfRange(10))
-        );
+        assert_eq!(Segment::try_from(10), Err(SegmentError::OutOfRange(10)));
     }
 }

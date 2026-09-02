@@ -111,6 +111,7 @@ impl VideoList {
     }
 
     /// Avanza a la siguiente posición de la secuencia.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Navigate {
         match self.selected {
             Some(i) if i + 1 < self.videos.len() => {

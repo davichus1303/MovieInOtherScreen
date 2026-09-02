@@ -26,6 +26,7 @@ use crate::player::PlayerCommand;
 /// Registra las marcas de éxito/error de la reproducción en el archivo de log.
 mod playback_log {
     use crate::logging;
+    use crate::reporting::{self, ErrorKind};
 
     /// Mensaje de éxito tras encolar la carga del vídeo.
     pub(super) fn started(path: &str) -> bool {
@@ -40,9 +41,10 @@ mod playback_log {
     /// Mensaje cuando el canal hacia el motor no acepta el comando (motor
     /// caído o cerrado).
     pub(super) fn send_failed(path: &str) -> bool {
-        logging::error(format!(
-            "No se pudo enviar la orden de carga al motor mpv: {path}"
-        ))
+        let msg = format!("No se pudo enviar la orden de carga al motor mpv: {path}");
+        logging::error(&msg);
+        reporting::report(ErrorKind::Player, &msg);
+        false
     }
 
     /// Mensaje cuando no hay selección activa (solo aplica a variantes que la

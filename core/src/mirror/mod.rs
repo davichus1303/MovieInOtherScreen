@@ -8,8 +8,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 
-use crate::monitors::Monitor;
-
 /// Comandos que el motor de espejos entiende.
 #[derive(Debug, Clone)]
 pub enum MirrorCmd {
@@ -24,7 +22,6 @@ pub enum MirrorCmd {
 /// Estado de una ventana de espejo individual.
 #[derive(Debug)]
 struct MirrorWindow {
-    monitor_id: String,
     is_loaded: bool,
 }
 
@@ -55,7 +52,10 @@ impl MirrorEngine {
 
     /// Actualiza la selección de monitores.
     pub fn set_selected_monitors(&mut self, monitors: Vec<crate::monitors::Monitor>) {
-        self.selected_monitors = monitors.into_iter().map(|m| (m.id().to_string(), m)).collect();
+        self.selected_monitors = monitors
+            .into_iter()
+            .map(|m| (m.id().to_string(), m))
+            .collect();
     }
 
     /// Notifica que el reproductor principal va a reproducir `path`.
@@ -95,10 +95,8 @@ impl MirrorEngine {
             } else {
                 // Espejo nuevo: se abriría aquí con pos_base
                 // (la apertura real de ventana es responsabilidad de la UI)
-                self.windows.insert(id.clone(), MirrorWindow {
-                    monitor_id: id.clone(),
-                    is_loaded: true,
-                });
+                self.windows
+                    .insert(id.clone(), MirrorWindow { is_loaded: true });
                 if let Some(tx) = &self.cmd_tx {
                     let _ = tx.send(MirrorCmd::Load(path.clone(), pos_base));
                 }

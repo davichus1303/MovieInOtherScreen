@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, develop]
   pull_request:
 
 env:
@@ -25,16 +25,74 @@ jobs:
       - name: Formato
         run: cargo fmt --all -- --check
 
-  build-flatpak:
-    name: Build Flatpak (SDK GNOME)
+  build-deb:
+    name: Build .deb y release
     runs-on: ubuntu-latest
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-46
-      options: --privileged
+    # Solo se empaqueta (y se crea release) al pushear a master o develop,
+    # nunca en pull requests.
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+      - name: Instala dependencias de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libmpv-dev \
+            libgraphene-1.0-dev \
+            dpkg-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release
+        run: cargo build --release --bin movies-on-other-screens
+      - name: Ensambla el paquete .deb
+        run: |
+          set -euxo pipefail
+          PACKAGE=movies-on-other-screens
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          ARCH=amd64
+          DIR="debian-pkg/${PACKAGE}_${VERSION}_${ARCH}"
+          mkdir -p "$DIR/DEBIAN"
+          mkdir -p "$DIR/usr/bin"
+          mkdir -p "$DIR/usr/share/applications"
+          mkdir -p "$DIR/usr/share/metainfo"
+          mkdir -p "$DIR/usr/share/icons/hicolor/scalable/apps"
+          install -Dm755 target/release/movies-on-other-screens "$DIR/usr/bin/movies-on-other-screens"
+          install -Dm644 data/io.github.davichus1303.MoviesOnOtherScreens.desktop "$DIR/usr/share/applications/"
+          install -Dm644 data/io.github.davichus1303.MoviesOnOtherScreens.metainfo.xml "$DIR/usr/share/metainfo/"
+          install -Dm644 data/icons/io.github.davichus1303.MoviesOnOtherScreens.svg "$DIR/usr/share/icons/hicolor/scalable/apps/"
+          cat > "$DIR/DEBIAN/control" <<EOF
+          Package: $PACKAGE
+          Version: $VERSION
+          Section: video
+          Priority: optional
+          Architecture: $ARCH
+          Maintainer: Movies on Other Screens developers
+          Depends: libgtk-4-1, libadwaita-1-0, libmpv2
+          Description: Reproduce vídeos en múltiples monitores de forma sincronizada
+          EOF
+          dpkg-deb --build --root-owner-group "$DIR"
+      - name: Sube el paquete como artefacto
+        uses: actions/upload-artifact@v4
         with:
-          bundle: movies-on-other-screens.flatpak
-          manifest-path: build-aux/io.github.davichus1303.MoviesOnOtherScreens.json
-          cache-key: flatpak-builder-${{ github.sha }}
+          name: movies-on-other-screens-deb
+          path: debian-pkg/*.deb
+          if-no-files-found: error
+      - name: Crea release y sube el .deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          SHA=$(git rev-parse --short HEAD)
+          TAG="v${VERSION}-${SHA}"
+          DEB=$(ls debian-pkg/*.deb)
+          gh release create "$TAG" "$DEB" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Movies on Other Screens ${TAG}" \
+            --generate-notes \
+            --target "$GITHUB_SHA" \
+            || gh release upload "$TAG" "$DEB" --repo "$GITHUB_REPOSITORY" --clobber

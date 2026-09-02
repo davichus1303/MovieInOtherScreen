@@ -19,13 +19,12 @@ use libadwaita as adw;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 use mos_core::video_list::VideoList;
 
-use crate::mirror;
-use crate::player::{PlayerCommand, PlayerEvent};
-use crate::sidebar;
-use crate::player_area::{self, Timeline};
-use crate::audio;
 use crate::events;
+use crate::mirror;
 use crate::monitor_widget;
+use crate::player::{PlayerCommand, PlayerEvent};
+use crate::player_area::{self, Timeline};
+use crate::sidebar;
 
 /// Estado compartido por toda la interfaz.
 #[derive(Clone)]
@@ -55,7 +54,14 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let video_list = Rc::new(RefCell::new(VideoList::new()));
     let (content, timeline) = build_layout(&video_list, &state);
-    toolbar.set_content(Some(&content));
+
+    // Overlay de toasts: los errores de la app se muestran aquí como mensajes
+    // emergentes (el canal de reporting se conecta al mismo tiempo).
+    let toast_overlay = adw::ToastOverlay::new();
+    toast_overlay.set_child(Some(&content));
+    crate::reporting::attach(&toast_overlay);
+
+    toolbar.set_content(Some(&toast_overlay));
 
     let window = adw::ApplicationWindow::builder()
         .application(application)
@@ -111,12 +117,14 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
     let video = gtk::Frame::new(Some("Vídeo"));
     video.set_vexpand(true);
     video.set_valign(gtk::Align::Fill);
+    video.set_hexpand(true);
     let embedded = crate::player::embed::EmbeddedVideo::new();
     video.set_child(Some(embedded.widget()));
 
-    let controls = player_area::build_controls(&state.player);
+    let controls = player_area::build_controls(&state.player, state.mirror.clone());
 
     let (timeline_row, timeline) = player_area::Timeline::new();
+    Timeline::connect_seek(&timeline, state.player.clone(), state.mirror.clone());
 
     let column = gtk::Box::new(gtk::Orientation::Vertical, 4);
     column.append(&video);
@@ -129,7 +137,6 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
     });
-    monitors.set_vexpand(true);
     column.append(&monitors);
 
     (column, timeline)
