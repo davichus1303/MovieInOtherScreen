@@ -8,6 +8,7 @@
 
 mod app;
 mod audio;
+mod engine;
 mod events;
 mod logging;
 mod mirror;
