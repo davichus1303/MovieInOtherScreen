@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use gtk::glib;
 use gtk::glib::translate::*;
@@ -32,12 +32,17 @@ static RENDER_COUNT: AtomicU32 = AtomicU32::new(0);
 /// render context para que el callback (que corre en el hilo del motor) pueda,
 /// en el hilo principal, llamar a `mpv_render_context_update` sobre el render
 /// context correcto de **esta** instancia (cada ventana/espejo tiene el suyo).
-#[repr(C)]
+///
+/// El render context se guarda como `AtomicUsize` y NO como valor copiado:
+/// en `unrealize` se pone a `0` antes de liberarlo, de modo que cualquier
+/// update callback que llegue tarde (ya encolado en el bucle principal) lea
+/// `null` y no invoque `mpv_render_context_update` sobre memoria ya liberada
+/// (evita un use-after-free que hacía que la app crasheara al cerrar espejos).
 struct MpvUpdateCtx {
     /// La dirección del `GtkGLArea` (como `usize`, dato plano `Send`).
     widget: usize,
-    /// El `mpv_render_context` de esta instancia.
-    render_ctx: ffi::mpv_render_context_handle,
+    /// El `mpv_render_context` de esta instancia (visto como dirección).
+    render_ctx: AtomicUsize,
 }
 
 /// Callback (`mpv_render_context_set_update_callback`) que encola un repintado
@@ -49,17 +54,20 @@ struct MpvUpdateCtx {
 /// saber si hay frame nuevo) y encolamos el redibujado del GLArea.
 unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
     // cb_ctx apunta al `MpvUpdateCtx` de esta instancia (leak intencionado,
-    // se libera en `unrealize`). Se extraen los punteros como `usize` (Send).
+    // no se libera en `unrealize` para que este callback pueda seguir
+    // dereferenciándolo con seguridad aunque llegue tarde).
     let widget = unsafe { (*(cb_ctx as *const MpvUpdateCtx)).widget };
-    let render_addr = unsafe { (*(cb_ctx as *const MpvUpdateCtx)).render_ctx as usize };
+    // Se clona el `Arc` no; el `AtomicUsize` vive dentro del `MpvUpdateCtx`
+    // (leakeado), así que se captura la const referencia co. El valor del
+    // render context se lee en tiempo de ejecución, no al encolar.
+    let render_ctx = &(*(cb_ctx as *const MpvUpdateCtx)).render_ctx;
     let main_ctx = glib::MainContext::default();
     main_ctx.invoke(move || {
-        // Notifica a mpv que el frame fue recibido; sin esto el VO se traba y
-        // nunca produce imagen (audio sí, vídeo no). Se llama sobre el render
-        // context de ESTA instancia (una por ventana/espejo).
-        let render_ctx = render_addr as ffi::mpv_render_context_handle;
-        if !render_ctx.is_null() {
-            let flags = unsafe { ffi::mpv_render_context_update(render_ctx) };
+        let ctx = render_ctx.load(Ordering::SeqCst) as ffi::mpv_render_context_handle;
+        // Si ya se cerró el espejo, `unrealize` puso este atómico a 0 y
+        // liberó el render context: hay que saltarse la llamada.
+        if !ctx.is_null() {
+            let flags = unsafe { ffi::mpv_render_context_update(ctx) };
             if flags & ffi::MPV_RENDER_UPDATE_FRAME != 0 {
                 unsafe {
                     let area = gtk::GLArea::from_glib_none(widget as *mut gtk::ffi::GtkGLArea);
@@ -73,7 +81,8 @@ unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
 /// Estado mutable compartido entre el GLArea y los callbacks.
 struct State {
     render_ctx: ffi::mpv_render_context_handle,
-    /// Puntero al `MpvUpdateCtx` de esta instancia (se libera en `unrealize`).
+    /// Puntero al `MpvUpdateCtx` de esta instancia (con `leak`; en `unrealize`
+    /// solo se anula su `render_ctx` atómico, no se libera la caja).
     update_ctx: *mut MpvUpdateCtx,
     /// Handle de mpv con el que crear el render context (per-instancia; en la
     /// ventana principal se rellena con el handle global del motor).
@@ -158,10 +167,14 @@ impl EmbeddedVideo {
         let state = self.state.clone();
         gl_area.connect_unrealize(move |_| {
             let mut s = state.borrow_mut();
-            // Libera el `MpvUpdateCtx` leakado y el render context.
+            // Primero se anula el render context en el `MpvUpdateCtx` compartido:
+            // cualquier update callback ya encolado en el bucle principal verá
+            // `null` y no tocará el contexto. El propio `MpvUpdateCtx` se deja
+            // con `leak` (no se libera aquí) para que dichos callbacks puedan
+            // seguir dereferenciándolo con seguridad al leer ese atómico.
             if !s.update_ctx.is_null() {
-                unsafe { drop(Box::from_raw(s.update_ctx)) };
-                s.update_ctx = std::ptr::null_mut();
+                let uctx = unsafe { s.update_ctx.as_ref().unwrap() };
+                uctx.render_ctx.store(0, Ordering::SeqCst);
             }
             if !s.render_ctx.is_null() {
                 unsafe { ffi::mpv_render_context_free(s.render_ctx) };
@@ -220,11 +233,13 @@ impl EmbeddedVideo {
                 }
                 logging::info("[embed] render context de mpv creado (GLArea GL)");
                 // Empaqueta el widget + este render context para el update
-                // callback (así cada ventana/espejo usa el suyo). Se hace `leak`;
-                // se libera en `unrealize`.
+                // callback (así cada ventana/espejo usa el suyo). Se hace
+                // `leak` a propósito: no se libera en `unrealize` para que los
+                // callbacks encolados puedan seguir leyendo el atómico sin
+                // dereferenciar memoria liberada.
                 let uctx = Box::into_raw(Box::new(MpvUpdateCtx {
                     widget: widget.as_ptr().cast::<c_void>() as usize,
-                    render_ctx: s.render_ctx,
+                    render_ctx: AtomicUsize::new(s.render_ctx as usize),
                 }));
                 s.update_ctx = uctx;
                 unsafe {

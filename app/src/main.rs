@@ -10,6 +10,7 @@ mod app;
 mod audio;
 mod engine;
 mod events;
+mod hwaccel;
 mod logging;
 mod mirror;
 mod monitor_widget;

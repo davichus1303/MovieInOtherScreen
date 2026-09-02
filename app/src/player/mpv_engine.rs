@@ -159,8 +159,9 @@ impl MpvSession {
         }
 
         let mut builder = mpv::MpvHandlerBuilder::new()?;
-        // Priorizar aceleración por hardware cuando esté disponible.
-        builder.try_hardware_decoding()?;
+        // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
+        // (dedicada o integrada), sin depender del códec del vídeo.
+        crate::hwaccel::apply_to(&mut builder)?;
         builder.set_option("keep-open", "yes")?;
         // Embeber la salida en un GLArea de la app (Celluloid-style) en lugar
         // de abrir la ventana propia de mpv.
