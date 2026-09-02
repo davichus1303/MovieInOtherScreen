@@ -52,9 +52,15 @@ impl MpvSession {
 
     fn run(&mut self, cmd_rx: Receiver<PlaybackCmd>) {
         // Observar propiedades
-        let _ = self.handler.observe_property::<f64>(PROP_TIME_POS, eng::OBSERVE_ID_TIME_POS);
-        let _ = self.handler.observe_property::<f64>(PROP_DURATION, eng::OBSERVE_ID_DURATION);
-        let _ = self.handler.observe_property::<bool>(PROP_PAUSE, eng::OBSERVE_ID_PAUSE);
+        let _ = self
+            .handler
+            .observe_property::<f64>(PROP_TIME_POS, eng::OBSERVE_ID_TIME_POS);
+        let _ = self
+            .handler
+            .observe_property::<f64>(PROP_DURATION, eng::OBSERVE_ID_DURATION);
+        let _ = self
+            .handler
+            .observe_property::<bool>(PROP_PAUSE, eng::OBSERVE_ID_PAUSE);
 
         loop {
             // Procesar eventos de mpv
@@ -159,7 +165,9 @@ impl MpvSession {
 
     fn stop(&mut self) {
         let _ = self.handler.set_property(PROP_PAUSE, true);
-        let _ = self.handler.command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
+        let _ = self
+            .handler
+            .command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
     }
 
     fn seek(&mut self, seconds: f64) {
@@ -174,13 +182,18 @@ impl MpvSession {
     }
 
     fn set_audio_device(&mut self, id: &str) {
-        let full_id =
-            if id.starts_with(AUDIO_PREFIX_PIPEWIRE) || id.starts_with(AUDIO_PREFIX_PULSE) || id.starts_with(AUDIO_PREFIX_ALSA) {
-                id.to_string()
-            } else {
-                format!("{}{id}", AUDIO_PREFIX_PIPEWIRE)
-            };
-        if let Err(err) = self.handler.set_property(PROP_AUDIO_DEVICE, full_id.as_str()) {
+        let full_id = if id.starts_with(AUDIO_PREFIX_PIPEWIRE)
+            || id.starts_with(AUDIO_PREFIX_PULSE)
+            || id.starts_with(AUDIO_PREFIX_ALSA)
+        {
+            id.to_string()
+        } else {
+            format!("{}{id}", AUDIO_PREFIX_PIPEWIRE)
+        };
+        if let Err(err) = self
+            .handler
+            .set_property(PROP_AUDIO_DEVICE, full_id.as_str())
+        {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
             self.audio_device = Some(id.to_string());
@@ -188,12 +201,14 @@ impl MpvSession {
     }
 
     fn apply_transition(&mut self) {
-        let _ = self
-            .handler
-            .command(&[CMD_AF, &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS)]);
-        let _ = self
-            .handler
-            .command(&[CMD_VF, &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS)]);
+        let _ = self.handler.command(&[
+            CMD_AF,
+            &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS),
+        ]);
+        let _ = self.handler.command(&[
+            CMD_VF,
+            &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS),
+        ]);
     }
 }
 

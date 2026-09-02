@@ -130,7 +130,9 @@ pub fn monitor_card(mon: &Monitor, deps: &MonitorDeps) -> gtk::ToggleButton {
     let label = mon.label().to_string();
 
     let button = gtk::ToggleButton::with_label(
-        &monitors::CARD_FORMAT.replace("{kind}", kind).replace("{label}", &label),
+        &monitors::CARD_FORMAT
+            .replace("{kind}", kind)
+            .replace("{label}", &label),
     );
     button.set_size_request(monitors::layout::CARD_WIDTH, monitors::layout::CARD_HEIGHT);
     button.set_halign(gtk::Align::Start);

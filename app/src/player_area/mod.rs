@@ -34,7 +34,10 @@ impl Timeline {
         let dur_label = gtk::Label::new(Some(player_area::TIME_LABEL_ZERO));
         dur_label.add_css_class(player_area::CSS_CAPTION);
 
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, player_area::layout::ROW_SPACING);
+        let row = gtk::Box::new(
+            gtk::Orientation::Horizontal,
+            player_area::layout::ROW_SPACING,
+        );
         row.append(&pos_label);
         row.append(&bar);
         row.append(&dur_label);
@@ -53,10 +56,7 @@ impl Timeline {
     pub fn update_position(&self, pos: f64) {
         self.pos_label.set_label(&fmt_time(pos));
         let frac = if self.duration > 0.0 {
-            (pos / self.duration).clamp(
-                player_area::FRAC_CLAMP_MIN,
-                player_area::FRAC_CLAMP_MAX,
-            )
+            (pos / self.duration).clamp(player_area::FRAC_CLAMP_MIN, player_area::FRAC_CLAMP_MAX)
         } else {
             0.0
         };
@@ -139,10 +139,22 @@ pub fn build_controls(
     controls.set_margin_bottom(player_area::layout::CONTROLS_MARGIN_BOTTOM);
 
     for (label, command) in [
-        (player_area::controls::ICON_SEEK_START, crate::player::PlayerCommand::Seek(0.0)),
-        (player_area::controls::ICON_PLAY, crate::player::PlayerCommand::Play),
-        (player_area::controls::ICON_PAUSE, crate::player::PlayerCommand::Pause),
-        (player_area::controls::ICON_STOP, crate::player::PlayerCommand::Stop),
+        (
+            player_area::controls::ICON_SEEK_START,
+            crate::player::PlayerCommand::Seek(0.0),
+        ),
+        (
+            player_area::controls::ICON_PLAY,
+            crate::player::PlayerCommand::Play,
+        ),
+        (
+            player_area::controls::ICON_PAUSE,
+            crate::player::PlayerCommand::Pause,
+        ),
+        (
+            player_area::controls::ICON_STOP,
+            crate::player::PlayerCommand::Stop,
+        ),
     ] {
         let send = player.clone();
         let mirror_state = mirror.clone();

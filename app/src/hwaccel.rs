@@ -17,14 +17,18 @@
  * integrated ones (Intel/AMD iGPU) expose when the driver is loaded. It is the
  *  same mechanism libva/VA-API uses to locate the decoding device.
  */
-use crate::constants::hwaccel::{DRM_DEV_DIR, DRM_RENDER_NODE_PREFIX, OPT_HWDEC, OPT_HWDEC_AUTO, OPT_HWDEC_NO};
+use crate::constants::hwaccel::{
+    DRM_DEV_DIR, DRM_RENDER_NODE_PREFIX, OPT_HWDEC, OPT_HWDEC_AUTO, OPT_HWDEC_NO,
+};
 
 pub fn has_gpu() -> bool {
     std::fs::read_dir(DRM_DEV_DIR)
         .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .any(|e| e.file_name().to_string_lossy().starts_with(DRM_RENDER_NODE_PREFIX))
+            entries.filter_map(Result::ok).any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(DRM_RENDER_NODE_PREFIX)
+            })
         })
         .unwrap_or(false)
 }

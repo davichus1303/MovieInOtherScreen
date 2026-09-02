@@ -19,7 +19,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use crate::constants::logging::{
-    APP_DATA_DIR, DIR_LOCAL, DIR_SHARE, FILE_NAME, LINE_FORMAT, env as log_env, levels,
+    env as log_env, levels, APP_DATA_DIR, DIR_LOCAL, DIR_SHARE, FILE_NAME, LINE_FORMAT,
 };
 
 /** Serializes writes to the file between threads. */

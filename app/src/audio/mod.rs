@@ -95,14 +95,12 @@ impl AudioSection {
 
                 combo.set_sensitive(true);
                 glib::ControlFlow::Continue
-            });
+            },
+        );
     }
 
     pub fn build(self) -> gtk::Box {
-        let section = gtk::Box::new(
-            gtk::Orientation::Vertical,
-            audio::layout::SECTION_SPACING,
-        );
+        let section = gtk::Box::new(gtk::Orientation::Vertical, audio::layout::SECTION_SPACING);
         section.set_margin_top(audio::layout::MARGIN_TOP);
         section.set_margin_bottom(audio::layout::MARGIN_BOTTOM);
         section.set_margin_start(audio::layout::MARGIN_START);

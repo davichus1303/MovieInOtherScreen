@@ -362,7 +362,8 @@ pub mod reporting {
 
     pub mod warnings {
         /** Warning when the reporting channel is closed. */
-        pub const CHANNEL_CLOSED: &str = "No se pudo notificar el error a la interfaz (canal cerrado)";
+        pub const CHANNEL_CLOSED: &str =
+            "No se pudo notificar el error a la interfaz (canal cerrado)";
         /** Warning when the UI is not attached yet. */
         pub const NOT_ATTACHED: &str = "Interfaz aún no registrada; error solo en logs";
     }
@@ -413,7 +414,8 @@ pub mod main_app {
         /** Logged when the app starts. */
         pub const LOG_STARTING: &str = "Iniciando Movies on Other Screens (PID {})";
         /** Warning when the environment is not Wayland. */
-        pub const WARN_NON_WAYLAND: &str = "Entorno gráfico no compatible con Wayland; la app sale.";
+        pub const WARN_NON_WAYLAND: &str =
+            "Entorno gráfico no compatible con Wayland; la app sale.";
         /** Logged when Wayland is detected. */
         pub const LOG_WAYLAND_OK: &str = "Entorno Wayland detectado.";
     }

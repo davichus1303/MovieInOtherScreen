@@ -62,19 +62,13 @@ impl MirrorCore {
             .spawn(move || run_mirror(cmd_rx, handle_tx))
             .is_err()
         {
-            reporting::report(
-                ErrorKind::Mirror,
-                mirror::messages::THREAD_CREATE_FAIL,
-            );
+            reporting::report(ErrorKind::Mirror, mirror::messages::THREAD_CREATE_FAIL);
             return None;
         }
         let handle = match handle_rx.recv() {
             Ok(h) => h as ffi::mpv_handle,
             Err(_) => {
-                reporting::report(
-                    ErrorKind::Mirror,
-                    mirror::messages::TERMINATED_EARLY,
-                );
+                reporting::report(ErrorKind::Mirror, mirror::messages::TERMINATED_EARLY);
                 return None;
             }
         };
@@ -202,7 +196,11 @@ impl MirrorWindow {
         if core.handle.is_null() {
             reporting::report(
                 ErrorKind::Mirror,
-                format!("{}{id}{}", mirror::messages::NO_HANDLE_PREFIX, mirror::messages::NO_HANDLE_SUFFIX),
+                format!(
+                    "{}{id}{}",
+                    mirror::messages::NO_HANDLE_PREFIX,
+                    mirror::messages::NO_HANDLE_SUFFIX
+                ),
             );
             return None;
         }
@@ -368,7 +366,10 @@ impl MirrorController {
 
     /** Resolves the real `gdk::Monitor` from the logical id `gdk-{i}`. */
     fn resolve_monitor(&self, id: &str) -> Option<gtk::gdk::Monitor> {
-        let idx = id.strip_prefix(monitors::ID_PREFIX)?.parse::<usize>().ok()?;
+        let idx = id
+            .strip_prefix(monitors::ID_PREFIX)?
+            .parse::<usize>()
+            .ok()?;
         let display = gtk::gdk::Display::default()?;
         let monitors: Vec<gtk::gdk::Monitor> = display
             .monitors()

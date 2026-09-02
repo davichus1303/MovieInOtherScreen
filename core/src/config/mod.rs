@@ -9,9 +9,7 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::constants::config::{
-    COMMENT_PREFIX, ESCAPE_CHAR, FILE_NAME, KEY_VALUE_SEPARATOR,
-};
+use crate::constants::config::{COMMENT_PREFIX, ESCAPE_CHAR, FILE_NAME, KEY_VALUE_SEPARATOR};
 
 /** Known configuration keys. */
 pub mod keys {

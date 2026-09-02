@@ -28,7 +28,7 @@ use crate::logging;
 use crate::constants::engine;
 use crate::constants::mpv::*;
 use crate::constants::player::{
-    messages::INIT_FAIL, logs::ENGINE_STARTED, logs::LOAD_PREFIX, LC_NUMERIC,
+    logs::ENGINE_STARTED, logs::LOAD_PREFIX, messages::INIT_FAIL, LC_NUMERIC,
 };
 
 /**
@@ -84,8 +84,12 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
     logging::info(ENGINE_STARTED);
 
     // Observa la posición y la duración para mover la barra de progreso.
-    let _ = player.handler.observe_property::<f64>(PROP_TIME_POS, engine::OBSERVE_ID_TIME_POS);
-    let _ = player.handler.observe_property::<f64>(PROP_DURATION, engine::OBSERVE_ID_DURATION);
+    let _ = player
+        .handler
+        .observe_property::<f64>(PROP_TIME_POS, engine::OBSERVE_ID_TIME_POS);
+    let _ = player
+        .handler
+        .observe_property::<f64>(PROP_DURATION, engine::OBSERVE_ID_DURATION);
 
     loop {
         // Drena los eventos de mpv (timeout 0 => no bloqueante). Los cambios
@@ -228,7 +232,9 @@ impl MpvSession {
 
     fn stop(&mut self) {
         let _ = self.handler.set_property(PROP_PAUSE, true);
-        let _ = self.handler.command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
+        let _ = self
+            .handler
+            .command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
         self.set_paused(true);
     }
 
@@ -268,12 +274,14 @@ impl MpvSession {
      * fade-in is applied when loading the new item.
      */
     fn apply_transition_into(&mut self) {
-        let _ = self
-            .handler
-            .command(&[CMD_AF, &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS)]);
-        let _ = self
-            .handler
-            .command(&[CMD_VF, &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS)]);
+        let _ = self.handler.command(&[
+            CMD_AF,
+            &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS),
+        ]);
+        let _ = self.handler.command(&[
+            CMD_VF,
+            &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS),
+        ]);
     }
 
     fn report_error(&self, err: mpv::Error) {

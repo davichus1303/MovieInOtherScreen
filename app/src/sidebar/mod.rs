@@ -39,7 +39,10 @@ pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
     videos_header.set_halign(gtk::Align::Start);
     sidebar.append(&videos_header);
 
-    let buttons_row = gtk::Box::new(gtk::Orientation::Horizontal, sidebar::layout::BUTTONS_ROW_SPACING);
+    let buttons_row = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        sidebar::layout::BUTTONS_ROW_SPACING,
+    );
     buttons_row.set_halign(gtk::Align::Start);
 
     let add_button = gtk::Button::with_label(sidebar::LABEL_ADD_BUTTON);

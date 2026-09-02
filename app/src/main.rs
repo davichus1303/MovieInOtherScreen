@@ -38,9 +38,7 @@ unsafe extern "C" {
 
 fn main() -> glib::ExitCode {
     install_panic_hook();
-    logging::info(
-        main_app::messages::LOG_STARTING.replace("{}", &std::process::id().to_string()),
-    );
+    logging::info(main_app::messages::LOG_STARTING.replace("{}", &std::process::id().to_string()));
 
     if !require_wayland() {
         logging::warn(main_app::messages::WARN_NON_WAYLAND);

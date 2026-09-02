@@ -21,7 +21,7 @@ use gtk::prelude::*;
 use libadwaita as adw;
 
 use crate::constants::reporting::{
-    DETAIL_SEPARATOR, LOG_TAG_FORMAT, TOAST_TIMEOUT_SECS, tags, user_messages, warnings,
+    tags, user_messages, warnings, DETAIL_SEPARATOR, LOG_TAG_FORMAT, TOAST_TIMEOUT_SECS,
 };
 use crate::logging;
 
