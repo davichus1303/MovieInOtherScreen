@@ -56,7 +56,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     toolbar.add_top_bar(&header);
 
     let video_list = Rc::new(RefCell::new(VideoList::new()));
-    let (content, timeline) = build_layout(&video_list, &state);
+    let (content, timeline) = build_layout(application, &video_list, &state);
 
     // Overlay de toasts: los errores de la app se muestran aquí como mensajes
     // emergentes (el canal de reporting se conecta al mismo tiempo).
@@ -91,6 +91,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
 /** Main layout: sidebar (30%) | playback area (70%). */
 fn build_layout(
+    application: &adw::Application,
     video_list: &Rc<RefCell<VideoList>>,
     state: &AppState,
 ) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
@@ -107,7 +108,7 @@ fn build_layout(
     paned.set_start_child(Some(&sidebar_widget));
 
     // Área de reproducción: vídeo + controles + timeline + monitores
-    let (area, timeline) = build_player_area(state);
+    let (area, timeline) = build_player_area(application, state);
     paned.set_end_child(Some(&area));
     paned.set_position(app::SIDEBAR_INITIAL_POSITION);
 
@@ -116,7 +117,10 @@ fn build_layout(
     (root, timeline)
 }
 
-fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
+fn build_player_area(
+    application: &adw::Application,
+    state: &AppState,
+) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
     let video = gtk::Frame::new(Some(app::LABEL_VIDEO_FRAME));
     video.set_vexpand(true);
     video.set_valign(gtk::Align::Fill);
@@ -139,6 +143,7 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
         player: state.player.clone(),
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
+        application: application.clone(),
     });
     column.append(&monitors);
 
