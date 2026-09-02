@@ -111,12 +111,14 @@ fn build_player_area(state: &AppState) -> (gtk::Box, Rc<RefCell<crate::player_ar
     let video = gtk::Frame::new(Some("Vídeo"));
     video.set_vexpand(true);
     video.set_valign(gtk::Align::Fill);
+    video.set_hexpand(true);
     let embedded = crate::player::embed::EmbeddedVideo::new();
     video.set_child(Some(embedded.widget()));
 
-    let controls = player_area::build_controls(&state.player);
+    let controls = player_area::build_controls(&state.player, state.mirror.clone());
 
     let (timeline_row, timeline) = player_area::Timeline::new();
+    Timeline::connect_seek(&timeline, state.player.clone(), state.mirror.clone());
 
     let column = gtk::Box::new(gtk::Orientation::Vertical, 4);
     column.append(&video);

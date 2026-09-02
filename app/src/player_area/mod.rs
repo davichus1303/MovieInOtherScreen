@@ -65,6 +65,27 @@ impl Timeline {
         }
         Some((value / 100.0) * self.duration)
     }
+
+    /// Conecta la barra de progreso: al clicar/arrastrar salta al punto en el
+    /// reproductor principal y en los espejos.
+    pub fn connect_seek(
+        self_rc: &Rc<RefCell<Self>>,
+        player: std::sync::mpsc::Sender<crate::player::PlayerCommand>,
+        mirror: std::rc::Rc<std::cell::RefCell<crate::mirror::MirrorController>>,
+    ) {
+        let tl = self_rc.clone();
+        let bar = self_rc.borrow().bar.clone();
+        let send = player;
+        bar.connect_change_value(move |_, _, value| {
+            let seconds = match tl.borrow().seek_seconds(value) {
+                Some(s) => s,
+                None => return glib::Propagation::Proceed,
+            };
+            let _ = send.send(crate::player::PlayerCommand::Seek(seconds));
+            mirror.borrow_mut().control(crate::mirror::MirrorCmd::Seek(seconds));
+            glib::Propagation::Proceed
+        });
+    }
 }
 
 /// Formatea una duración en segundos como `mm:ss` (o `hh:mm:ss` cuando aplica).
@@ -83,8 +104,12 @@ pub fn fmt_time(secs: f64) -> String {
     }
 }
 
-/// Construye la fila de controles (botones + timeline).
-pub fn build_controls(player: &std::sync::mpsc::Sender<crate::player::PlayerCommand>) -> gtk::Box {
+/// Construye la fila de controles (botones) y sincroniza los espejos con el
+/// reproductor principal al pulsarlos.
+pub fn build_controls(
+    player: &std::sync::mpsc::Sender<crate::player::PlayerCommand>,
+    mirror: std::rc::Rc<std::cell::RefCell<crate::mirror::MirrorController>>,
+) -> gtk::Box {
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     controls.set_halign(gtk::Align::Center);
     controls.set_margin_top(6);
@@ -97,9 +122,26 @@ pub fn build_controls(player: &std::sync::mpsc::Sender<crate::player::PlayerComm
         ("⏹", crate::player::PlayerCommand::Stop),
     ] {
         let send = player.clone();
+        let mirror_state = mirror.clone();
         let button = gtk::Button::with_label(label);
         button.connect_clicked(move |_| {
             let _ = send.send(command.clone());
+            // Stop detiene (pausa) y regresa al inicio en los espejos, igual
+            // que en el reproductor principal.
+            if command == crate::player::PlayerCommand::Stop {
+                mirror_state.borrow_mut().control(crate::mirror::MirrorCmd::Pause);
+                mirror_state.borrow_mut().control(crate::mirror::MirrorCmd::Seek(0.0));
+            } else {
+                let mirror_cmd = match command {
+                    crate::player::PlayerCommand::Play => Some(crate::mirror::MirrorCmd::Play),
+                    crate::player::PlayerCommand::Pause => Some(crate::mirror::MirrorCmd::Pause),
+                    crate::player::PlayerCommand::Seek(pos) => Some(crate::mirror::MirrorCmd::Seek(pos)),
+                    _ => None,
+                };
+                if let Some(cmd) = mirror_cmd {
+                    mirror_state.borrow_mut().control(cmd);
+                }
+            }
         });
         controls.append(&button);
     }
