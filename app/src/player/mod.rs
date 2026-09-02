@@ -24,6 +24,8 @@ pub enum PlayerCommand {
     Play,
     Pause,
     Stop,
+    /// Descarga por completo el vídeo actual (deja el reproductor sin archivo).
+    Unload,
     /// Busca a una posición en segundos.
     Seek(f64),
     /// Conmuta play/pausa según el estado actual.
