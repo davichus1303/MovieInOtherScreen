@@ -9,6 +9,10 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::constants::config::{
+    COMMENT_PREFIX, ESCAPE_CHAR, FILE_NAME, KEY_VALUE_SEPARATOR,
+};
+
 /** Known configuration keys. */
 pub mod keys {
     pub const AUDIO_DEVICE: &str = "audio_device";
@@ -45,7 +49,7 @@ impl Config {
 /** Configuration file location following XDG conventions. */
 pub fn config_file_path(xdg_config_home: impl AsRef<Path>) -> PathBuf {
     let base = xdg_config_home.as_ref();
-    let name = "movies-on-other-screens.conf".to_string();
+    let name = FILE_NAME.to_string();
     base.join(name)
 }
 
@@ -57,7 +61,7 @@ pub fn save_to(path: &Path, config: &Config) -> io::Result<()> {
     let mut content = String::new();
     for (key, value) in &config.entries {
         content.push_str(key);
-        content.push('=');
+        content.push(KEY_VALUE_SEPARATOR);
         content.push_str(&escape(value));
         content.push('\n');
     }
@@ -77,10 +81,10 @@ pub fn load_from(path: &Path) -> io::Result<Config> {
     let mut config = Config::new();
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        if line.is_empty() || line.starts_with(COMMENT_PREFIX) {
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else {
+        let Some((key, value)) = line.split_once(KEY_VALUE_SEPARATOR) else {
             // Línea malformada: se ignora, no se oculta el resto de la config.
             continue;
         };
@@ -90,14 +94,14 @@ pub fn load_from(path: &Path) -> io::Result<Config> {
 }
 
 fn escape(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('\n', "\\n")
+    value.replace(ESCAPE_CHAR, "\\\\").replace('\n', "\\n")
 }
 
 fn unescape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut chars = value.chars();
     while let Some(c) = chars.next() {
-        if c == '\\' {
+        if c == ESCAPE_CHAR {
             match chars.next() {
                 Some('n') => out.push('\n'),
                 Some('\\') => out.push('\\'),

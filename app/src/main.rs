@@ -10,6 +10,7 @@
 
 mod app;
 mod audio;
+mod constants;
 mod engine;
 mod events;
 mod hwaccel;
@@ -29,10 +30,7 @@ use gtk::prelude::*;
 
 use libadwaita as adw;
 
-const APPLICATION_ID: &str = "io.github.davichus1303.MoviesOnOtherScreens";
-
-/** `LC_NUMERIC` locale category (POSIX definition). */
-const LC_NUMERIC: i32 = 1;
+use crate::constants::{app::APPLICATION_ID, main_app};
 
 unsafe extern "C" {
     fn setlocale(category: i32, locale: *const u8) -> *mut u8;
@@ -40,16 +38,15 @@ unsafe extern "C" {
 
 fn main() -> glib::ExitCode {
     install_panic_hook();
-    logging::info(format!(
-        "Iniciando Movies on Other Screens (PID {})",
-        std::process::id()
-    ));
+    logging::info(
+        main_app::messages::LOG_STARTING.replace("{}", &std::process::id().to_string()),
+    );
 
     if !require_wayland() {
-        logging::warn("Entorno gráfico no compatible con Wayland; la app sale.");
+        logging::warn(main_app::messages::WARN_NON_WAYLAND);
         return show_requirement_message_and_exit();
     }
-    logging::info("Entorno Wayland detectado.");
+    logging::info(main_app::messages::LOG_WAYLAND_OK);
 
     init_locale_for_mpv();
     let application = adw::Application::builder()
@@ -71,7 +68,7 @@ fn main() -> glib::ExitCode {
  */
 fn init_locale_for_mpv() {
     unsafe {
-        setlocale(LC_NUMERIC, b"C\0".as_ptr());
+        setlocale(main_app::LC_NUMERIC, b"C\0".as_ptr());
     }
 }
 
@@ -83,7 +80,7 @@ fn require_wayland() -> bool {
 /** Shows the requirement message and exits with a clear exit code. */
 fn show_requirement_message_and_exit() -> glib::ExitCode {
     eprintln!("{}", wayland::REQUIREMENT_MESSAGE);
-    glib::ExitCode::from(1)
+    glib::ExitCode::from(main_app::EXIT_CODE_REQUIREMENT)
 }
 
 /**
@@ -100,7 +97,7 @@ fn install_panic_hook() {
             .downcast_ref::<&str>()
             .map(|s| s.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "pánico desconocido".to_string());
+            .unwrap_or_else(|| main_app::MSG_UNKNOWN_PANIC.to_string());
         crate::reporting::report(crate::reporting::ErrorKind::Internal, format!("{payload}"));
     }));
 }

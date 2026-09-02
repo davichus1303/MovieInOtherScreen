@@ -5,6 +5,10 @@
  * clear message and exits safely, without attempting partial compatibility.
  */
 
+use crate::constants::wayland::{
+    ENV_DISPLAY, ENV_SESSION_TYPE, ENV_WAYLAND_DISPLAY, SESSION_VALUE_WAYLAND, SESSION_VALUE_X11,
+};
+
 /** Source of truth about the graphics backend. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphicsBackend {
@@ -20,11 +24,11 @@ pub enum GraphicsBackend {
  * doubt we consult the protocol-specific variables.
  */
 pub fn detect_backend() -> GraphicsBackend {
-    if let Ok(session) = std::env::var("XDG_SESSION_TYPE") {
-        if session.eq_ignore_ascii_case("wayland") {
+    if let Ok(session) = std::env::var(ENV_SESSION_TYPE) {
+        if session.eq_ignore_ascii_case(SESSION_VALUE_WAYLAND) {
             return GraphicsBackend::Wayland;
         }
-        if session.eq_ignore_ascii_case("x11") {
+        if session.eq_ignore_ascii_case(SESSION_VALUE_X11) {
             // Podría estar en una sesión X11 con Wayland disponible; se
             // resuelve con las variables de Wayland de forma prioritaria.
             return resolve_protocol_variables();
@@ -34,8 +38,8 @@ pub fn detect_backend() -> GraphicsBackend {
 }
 
 fn resolve_protocol_variables() -> GraphicsBackend {
-    let has_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-    let has_x11 = std::env::var("DISPLAY").is_ok();
+    let has_wayland = std::env::var(ENV_WAYLAND_DISPLAY).is_ok();
+    let has_x11 = std::env::var(ENV_DISPLAY).is_ok();
     match (has_wayland, has_x11) {
         (true, _) => GraphicsBackend::Wayland,
         (false, true) => GraphicsBackend::X11,

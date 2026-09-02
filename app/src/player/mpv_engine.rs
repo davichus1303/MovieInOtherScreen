@@ -25,8 +25,11 @@ use std::sync::{Mutex, OnceLock};
 use super::{PlayerCommand, PlayerEvent};
 use crate::logging;
 
-/** Duration (seconds) of the gradual transition when changing videos. */
-pub const TRANSITION_SECONDS: f64 = 3.0;
+use crate::constants::engine;
+use crate::constants::mpv::*;
+use crate::constants::player::{
+    messages::INIT_FAIL, logs::ENGINE_STARTED, logs::LOAD_PREFIX, LC_NUMERIC,
+};
 
 /**
  * Shared libmpv handle with the render layer (UI GLArea).
@@ -62,7 +65,7 @@ pub fn spawn(
     events: Sender<PlayerEvent>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
-        .name("mpv-engine".into())
+        .name(engine::THREAD_NAME.into())
         .spawn(move || run(commands, events))
         .expect("el hilo del reproductor debe poder crearse")
 }
@@ -71,34 +74,34 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
     let mut player = match MpvSession::new(&events) {
         Ok(p) => p,
         Err(err) => {
-            let message = format!("No se pudo inicializar el reproductor: {err}");
+            let message = format!("{}{err}", INIT_FAIL);
             logging::error(&message);
             crate::reporting::report(crate::reporting::ErrorKind::Player, &message);
             let _ = events.send(PlayerEvent::PlaybackError(message));
             return;
         }
     };
-    logging::info("Motor mpv inicializado correctamente.");
+    logging::info(ENGINE_STARTED);
 
     // Observa la posición y la duración para mover la barra de progreso.
-    let _ = player.handler.observe_property::<f64>("time-pos", 1);
-    let _ = player.handler.observe_property::<f64>("duration", 2);
+    let _ = player.handler.observe_property::<f64>(PROP_TIME_POS, engine::OBSERVE_ID_TIME_POS);
+    let _ = player.handler.observe_property::<f64>(PROP_DURATION, engine::OBSERVE_ID_DURATION);
 
     loop {
         // Drena los eventos de mpv (timeout 0 => no bloqueante). Los cambios
         // de las propiedades observadas se publican como eventos de la UI.
         let mut busy = false;
-        while let Some(ev) = player.handler.wait_event(0.0) {
+        while let Some(ev) = player.handler.wait_event(engine::EVENT_POLL_TIMEOUT_SECS) {
             busy = true;
             use mpv::Event;
             match ev {
                 Event::PropertyChange { name, change, .. } => match name {
-                    "time-pos" => {
+                    PROP_TIME_POS => {
                         if let mpv::Format::Double(p) = change {
                             let _ = events.send(PlayerEvent::Position(p));
                         }
                     }
-                    "duration" => {
+                    PROP_DURATION => {
                         if let mpv::Format::Double(d) = change {
                             let _ = events.send(PlayerEvent::Duration(d));
                         }
@@ -136,7 +139,7 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
 
         // Pequeña pausa para no saturar la CPU cuando no hay actividad.
         if !busy {
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(engine::IDLE_SLEEP_MS));
         }
     }
 }
@@ -147,9 +150,6 @@ struct MpvSession {
     events: Sender<PlayerEvent>,
     paused: bool,
 }
-
-/** `LC_NUMERIC` locale category (POSIX definition). */
-const LC_NUMERIC: i32 = 1;
 
 unsafe extern "C" {
     fn setlocale(category: i32, locale: *const u8) -> *mut u8;
@@ -169,10 +169,10 @@ impl MpvSession {
         // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
         // (dedicada o integrada), sin depender del códec del vídeo.
         crate::hwaccel::apply_to(&mut builder)?;
-        builder.set_option("keep-open", "yes")?;
+        builder.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
         // Embeber la salida en un GLArea de la app (Celluloid-style) en lugar
         // de abrir la ventana propia de mpv.
-        builder.set_option("vo", "libmpv")?;
+        builder.set_option(OPT_VO, VALUE_VO_LIBMPV)?;
         let handler = builder.build()?;
 
         // Exponer el handle al renderer embebido de la UI.
@@ -190,8 +190,8 @@ impl MpvSession {
 
     fn load(&mut self, path: &str) {
         self.apply_transition_into();
-        logging::info(format!("Cargando vídeo en el motor mpv: {path}"));
-        if let Err(err) = self.handler.command(&["loadfile", path]) {
+        logging::info(format!("{}{path}", LOAD_PREFIX));
+        if let Err(err) = self.handler.command(&[CMD_LOADFILE, path]) {
             let message = format!("Error al cargar el vídeo '{path}': {err}");
             logging::error(&message);
             self.report_error_str(message);
@@ -205,7 +205,7 @@ impl MpvSession {
     }
 
     fn play(&mut self) {
-        if let Err(err) = self.handler.set_property("pause", false) {
+        if let Err(err) = self.handler.set_property(PROP_PAUSE, false) {
             self.report_error(err);
             return;
         }
@@ -213,7 +213,7 @@ impl MpvSession {
     }
 
     fn pause(&mut self) {
-        if let Err(err) = self.handler.set_property("pause", true) {
+        if let Err(err) = self.handler.set_property(PROP_PAUSE, true) {
             self.report_error(err);
             return;
         }
@@ -222,13 +222,13 @@ impl MpvSession {
 
     fn toggle_pause(&mut self) {
         let target = !self.paused;
-        let _ = self.handler.set_property("pause", target);
+        let _ = self.handler.set_property(PROP_PAUSE, target);
         self.set_paused(target);
     }
 
     fn stop(&mut self) {
-        let _ = self.handler.set_property("pause", true);
-        let _ = self.handler.command(&["seek", "0", "absolute"]);
+        let _ = self.handler.set_property(PROP_PAUSE, true);
+        let _ = self.handler.command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
         self.set_paused(true);
     }
 
@@ -238,9 +238,9 @@ impl MpvSession {
      * another video is loaded.
      */
     fn unload(&mut self) {
-        let _ = self.handler.set_property("pause", true);
+        let _ = self.handler.set_property(PROP_PAUSE, true);
         // Cargar una ruta vacía desvincula el archivo actual del core de mpv.
-        let _ = self.handler.command(&["loadfile", ""]);
+        let _ = self.handler.command(&[CMD_LOADFILE, EMPTY_LOAD_PATH]);
         self.set_paused(true);
     }
 
@@ -252,7 +252,7 @@ impl MpvSession {
 
     fn seek_to(&mut self, seconds: f64) -> mpv::Result<()> {
         let arg = format!("{seconds}");
-        self.handler.command(&["seek", &arg, "absolute"])
+        self.handler.command(&[CMD_SEEK, &arg, SEEK_MODE_ABSOLUTE])
     }
 
     fn set_paused(&mut self, paused: bool) {
@@ -270,10 +270,10 @@ impl MpvSession {
     fn apply_transition_into(&mut self) {
         let _ = self
             .handler
-            .command(&["af", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+            .command(&[CMD_AF, &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS)]);
         let _ = self
             .handler
-            .command(&["vf", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+            .command(&[CMD_VF, &format!("fade in:st=0:d={}", engine::TRANSITION_SECONDS)]);
     }
 
     fn report_error(&self, err: mpv::Error) {

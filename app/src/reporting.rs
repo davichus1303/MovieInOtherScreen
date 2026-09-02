@@ -20,6 +20,9 @@ use gtk::prelude::*;
 
 use libadwaita as adw;
 
+use crate::constants::reporting::{
+    DETAIL_SEPARATOR, LOG_TAG_FORMAT, TOAST_TIMEOUT_SECS, tags, user_messages, warnings,
+};
 use crate::logging;
 
 /** Known error categories of the application. */
@@ -43,29 +46,29 @@ impl ErrorKind {
     /** Readable message shown to the user in the toast. */
     fn user_message(self, detail: &str) -> String {
         let base = match self {
-            ErrorKind::Mirror => "Error con un monitor espejo".to_string(),
-            ErrorKind::Player => "Error de reproducción".to_string(),
-            ErrorKind::Video => "No se pudo cargar el vídeo".to_string(),
-            ErrorKind::Monitors => "Error con los monitores".to_string(),
-            ErrorKind::Audio => "Error de audio".to_string(),
-            ErrorKind::Internal => "Error interno".to_string(),
+            ErrorKind::Mirror => user_messages::MIRROR.to_string(),
+            ErrorKind::Player => user_messages::PLAYER.to_string(),
+            ErrorKind::Video => user_messages::VIDEO.to_string(),
+            ErrorKind::Monitors => user_messages::MONITORS.to_string(),
+            ErrorKind::Audio => user_messages::AUDIO.to_string(),
+            ErrorKind::Internal => user_messages::INTERNAL.to_string(),
         };
         if detail.trim().is_empty() {
             base
         } else {
-            format!("{base}: {detail}")
+            format!("{base}{DETAIL_SEPARATOR}{detail}")
         }
     }
 
     /** Category tag for the log. */
     fn tag(self) -> &'static str {
         match self {
-            ErrorKind::Mirror => "monitor",
-            ErrorKind::Player => "player",
-            ErrorKind::Video => "video",
-            ErrorKind::Monitors => "monitors",
-            ErrorKind::Audio => "audio",
-            ErrorKind::Internal => "internal",
+            ErrorKind::Mirror => tags::MIRROR,
+            ErrorKind::Player => tags::PLAYER,
+            ErrorKind::Video => tags::VIDEO,
+            ErrorKind::Monitors => tags::MONITORS,
+            ErrorKind::Audio => tags::AUDIO,
+            ErrorKind::Internal => tags::INTERNAL,
         }
     }
 }
@@ -93,7 +96,9 @@ pub fn report(kind: ErrorKind, detail: impl AsRef<str>) {
     };
 
     let user_msg = report.kind.user_message(&report.detail);
-    let log_msg = format!("[{}] {}", report.kind.tag(), report.detail);
+    let log_msg = LOG_TAG_FORMAT
+        .replacen("{}", report.kind.tag(), 1)
+        .replacen("{}", &report.detail, 1);
 
     // Los errores siempre se registran en logs (diagnóstico).
     match report.kind {
@@ -108,10 +113,10 @@ pub fn report(kind: ErrorKind, detail: impl AsRef<str>) {
     // Y se muestran en la interfaz si la UI ya está escuchando.
     if let Some(tx) = REPORT_TX.get() {
         if tx.send(report).is_err() {
-            logging::warn("No se pudo notificar el error a la interfaz (canal cerrado)");
+            logging::warn(warnings::CHANNEL_CLOSED);
         }
     } else {
-        logging::warn("Interfaz aún no registrada; error solo en logs");
+        logging::warn(warnings::NOT_ATTACHED);
     }
 }
 
@@ -138,7 +143,7 @@ fn drain_reports(rx: &Receiver<Report>, overlay: &adw::ToastOverlay) -> glib::Co
     while let Ok(report) = rx.try_recv() {
         let msg = report.kind.user_message(&report.detail);
         let toast = adw::Toast::new(&msg);
-        toast.set_timeout(4);
+        toast.set_timeout(TOAST_TIMEOUT_SECS);
         overlay.add_toast(toast);
     }
     glib::ControlFlow::Continue

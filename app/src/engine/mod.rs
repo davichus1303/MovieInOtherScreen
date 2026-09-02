@@ -10,6 +10,10 @@ use std::thread;
 
 use mos_core::playback::{PlaybackCmd, PlaybackEvent, PlaybackState};
 
+use crate::constants::engine as eng;
+use crate::constants::mpv::*;
+use crate::constants::player;
+
 /** Internal mpv handle (opaque to the rest of the app). */
 type MpvHandle = *mut std::os::raw::c_void;
 
@@ -25,16 +29,16 @@ impl MpvSession {
     fn new(events: &Sender<PlaybackEvent>) -> mpv::Result<Self> {
         // libmpv exige LC_NUMERIC en "C"
         unsafe {
-            setlocale(LC_NUMERIC, b"C\0".as_ptr());
+            setlocale(player::LC_NUMERIC, b"C\0".as_ptr());
         }
 
         let mut builder = mpv::MpvHandlerBuilder::new()?;
         // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
         // (dedicada o integrada), sin depender del códec del vídeo.
         crate::hwaccel::apply_to(&mut builder)?;
-        builder.set_option("keep-open", "yes")?;
-        builder.set_option("vo", "libmpv")?;
-        builder.set_option("audio", "yes")?;
+        builder.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
+        builder.set_option(OPT_VO, VALUE_VO_LIBMPV)?;
+        builder.set_option(OPT_AUDIO, VALUE_YES)?;
         let handler = builder.build()?;
 
         let session = Self {
@@ -48,13 +52,13 @@ impl MpvSession {
 
     fn run(&mut self, cmd_rx: Receiver<PlaybackCmd>) {
         // Observar propiedades
-        let _ = self.handler.observe_property::<f64>("time-pos", 1);
-        let _ = self.handler.observe_property::<f64>("duration", 2);
-        let _ = self.handler.observe_property::<bool>("pause", 3);
+        let _ = self.handler.observe_property::<f64>(PROP_TIME_POS, eng::OBSERVE_ID_TIME_POS);
+        let _ = self.handler.observe_property::<f64>(PROP_DURATION, eng::OBSERVE_ID_DURATION);
+        let _ = self.handler.observe_property::<bool>(PROP_PAUSE, eng::OBSERVE_ID_PAUSE);
 
         loop {
             // Procesar eventos de mpv
-            while let Some(ev) = self.handler.wait_event(0.0) {
+            while let Some(ev) = self.handler.wait_event(eng::EVENT_POLL_TIMEOUT_SECS) {
                 self.handle_mpv_event(ev);
             }
 
@@ -66,7 +70,7 @@ impl MpvSession {
             }
 
             // Pequeña pausa para no saturar CPU
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(eng::IDLE_SLEEP_MS));
         }
     }
 
@@ -74,19 +78,19 @@ impl MpvSession {
         use mpv::Event;
         match ev {
             mpv::Event::PropertyChange { name, change, .. } => match name.as_ref() {
-                "time-pos" => {
+                PROP_TIME_POS => {
                     if let mpv::Format::Double(pos) = change {
                         self.state.update_position(pos);
                         let _ = self.events.send(PlaybackEvent::Position(pos));
                     }
                 }
-                "duration" => {
+                PROP_DURATION => {
                     if let mpv::Format::Double(dur) = change {
                         self.state.update_duration(dur);
                         let _ = self.events.send(PlaybackEvent::Duration(dur));
                     }
                 }
-                "pause" => {
+                PROP_PAUSE => {
                     if let mpv::Format::Flag(paused) = change {
                         self.state.set_paused(paused);
                         let _ = self.events.send(PlaybackEvent::Paused(paused));
@@ -113,14 +117,14 @@ impl MpvSession {
             PlaybackCmd::Stop => self.stop(),
             PlaybackCmd::SetAudioDevice(id) => self.set_audio_device(&id),
             PlaybackCmd::Shutdown => {
-                let _ = self.handler.command(&["quit"]);
+                let _ = self.handler.command(&[CMD_QUIT]);
             }
         }
     }
 
     fn load(&mut self, path: &str) {
         self.apply_transition();
-        if let Err(err) = self.handler.command(&["loadfile", path]) {
+        if let Err(err) = self.handler.command(&[CMD_LOADFILE, path]) {
             let msg = format!("Error al cargar '{path}': {err}");
             let _ = self.events.send(PlaybackEvent::Error(msg));
         } else {
@@ -129,7 +133,7 @@ impl MpvSession {
     }
 
     fn play(&mut self) {
-        if let Err(err) = self.handler.set_property("pause", false) {
+        if let Err(err) = self.handler.set_property(PROP_PAUSE, false) {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
             self.state.set_paused(false);
@@ -137,7 +141,7 @@ impl MpvSession {
     }
 
     fn pause(&mut self) {
-        if let Err(err) = self.handler.set_property("pause", true) {
+        if let Err(err) = self.handler.set_property(PROP_PAUSE, true) {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
             self.state.set_paused(true);
@@ -146,7 +150,7 @@ impl MpvSession {
 
     fn toggle_pause(&mut self) {
         let target = !self.state.paused;
-        if let Err(err) = self.handler.set_property("pause", target) {
+        if let Err(err) = self.handler.set_property(PROP_PAUSE, target) {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
             self.state.set_paused(target);
@@ -154,8 +158,8 @@ impl MpvSession {
     }
 
     fn stop(&mut self) {
-        let _ = self.handler.set_property("pause", true);
-        let _ = self.handler.command(&["seek", "0", "absolute"]);
+        let _ = self.handler.set_property(PROP_PAUSE, true);
+        let _ = self.handler.command(&[CMD_SEEK, SEEK_TO_START, SEEK_MODE_ABSOLUTE]);
     }
 
     fn seek(&mut self, seconds: f64) {
@@ -166,17 +170,17 @@ impl MpvSession {
 
     fn seek_to(&mut self, seconds: f64) -> mpv::Result<()> {
         let arg = format!("{seconds}");
-        self.handler.command(&["seek", &arg, "absolute"])
+        self.handler.command(&[CMD_SEEK, &arg, SEEK_MODE_ABSOLUTE])
     }
 
     fn set_audio_device(&mut self, id: &str) {
         let full_id =
-            if id.starts_with("pipewire/") || id.starts_with("pulse/") || id.starts_with("alsa/") {
+            if id.starts_with(AUDIO_PREFIX_PIPEWIRE) || id.starts_with(AUDIO_PREFIX_PULSE) || id.starts_with(AUDIO_PREFIX_ALSA) {
                 id.to_string()
             } else {
-                format!("pipewire/{id}")
+                format!("{}{id}", AUDIO_PREFIX_PIPEWIRE)
             };
-        if let Err(err) = self.handler.set_property("audio-device", full_id.as_str()) {
+        if let Err(err) = self.handler.set_property(PROP_AUDIO_DEVICE, full_id.as_str()) {
             let _ = self.events.send(PlaybackEvent::Error(err.to_string()));
         } else {
             self.audio_device = Some(id.to_string());
@@ -184,13 +188,12 @@ impl MpvSession {
     }
 
     fn apply_transition(&mut self) {
-        const TRANSITION_SECONDS: f64 = 3.0;
         let _ = self
             .handler
-            .command(&["af", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+            .command(&[CMD_AF, &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS)]);
         let _ = self
             .handler
-            .command(&["vf", &format!("fade in:st=0:d={TRANSITION_SECONDS}")]);
+            .command(&[CMD_VF, &format!("fade in:st=0:d={}", eng::TRANSITION_SECONDS)]);
     }
 }
 
@@ -212,13 +215,12 @@ pub fn spawn_mpv_engine(
     events: Sender<PlaybackEvent>,
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
-        .name("mpv-engine".into())
+        .name(eng::THREAD_NAME.into())
         .spawn(move || run_mpv_engine(cmd_rx, events))
         .expect("mpv engine thread must start")
 }
 
 // LC_NUMERIC (POSIX).
-const LC_NUMERIC: i32 = 1;
 unsafe extern "C" {
     fn setlocale(category: i32, locale: *const u8) -> *mut u8;
 }

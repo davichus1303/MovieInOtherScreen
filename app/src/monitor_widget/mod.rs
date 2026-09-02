@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 
+use crate::constants::monitors;
 use crate::events::AppState;
 use crate::mirror::MirrorController;
 use crate::player::PlayerCommand;
@@ -18,13 +19,16 @@ pub struct MonitorDeps {
 pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     detect_monitors(&deps.monitors);
 
-    let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    section.set_margin_top(8);
-    section.set_margin_bottom(12);
-    section.set_margin_start(12);
-    section.set_margin_end(12);
+    let section = gtk::Box::new(
+        gtk::Orientation::Vertical,
+        monitors::layout::SECTION_SPACING,
+    );
+    section.set_margin_top(monitors::layout::MARGIN_TOP);
+    section.set_margin_bottom(monitors::layout::MARGIN_BOTTOM);
+    section.set_margin_start(monitors::layout::MARGIN_START);
+    section.set_margin_end(monitors::layout::MARGIN_END);
 
-    let title = gtk::Label::new(Some("Monitores"));
+    let title = gtk::Label::new(Some(monitors::LABEL_SECTION_TITLE));
     title.set_halign(gtk::Align::Start);
     title.add_css_class("title-4");
     section.append(&title);
@@ -35,7 +39,7 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     ));
     hint.set_halign(gtk::Align::Start);
     hint.set_wrap(true);
-    hint.set_max_width_chars(60);
+    hint.set_max_width_chars(monitors::layout::HINT_MAX_WIDTH_CHARS);
     section.append(&hint);
 
     let mirrors = monitors_row(deps);
@@ -67,7 +71,7 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
         let label = item
             .model()
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "Monitor".to_string());
+            .unwrap_or_else(|| monitors::LABEL_MONITOR_DEFAULT.to_string());
         found.push((item.geometry(), label));
     }
 
@@ -76,7 +80,7 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
     let primary_index = found
         .iter()
         .position(|(g, _)| g.x() == 0 && g.y() == 0)
-        .unwrap_or(0);
+        .unwrap_or(monitors::DEFAULT_PRIMARY_INDEX);
 
     let detected: Vec<Monitor> = found
         .into_iter()
@@ -87,7 +91,7 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
             } else {
                 MonitorKind::Secondary
             };
-            Monitor::new(format!("gdk-{i}"), label, kind)
+            Monitor::new(format!("{}{}", monitors::ID_PREFIX, i), label, kind)
         })
         .collect();
 
@@ -96,12 +100,15 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
 
 /** Horizontal row with one card per monitor. */
 pub fn monitors_row(deps: &MonitorDeps) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let row = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        monitors::layout::CARD_ROW_SPACING,
+    );
     row.set_halign(gtk::Align::Start);
 
     let set = deps.monitors.borrow();
     if set.is_empty() {
-        let label = gtk::Label::new(Some("No se detectó ningún monitor."));
+        let label = gtk::Label::new(Some(monitors::LABEL_NO_MONITORS));
         label.set_halign(gtk::Align::Start);
         row.append(&label);
         return row;
@@ -115,17 +122,19 @@ pub fn monitors_row(deps: &MonitorDeps) -> gtk::Box {
 /** Selectable card for a monitor. */
 pub fn monitor_card(mon: &Monitor, deps: &MonitorDeps) -> gtk::ToggleButton {
     let kind = if mon.is_primary() {
-        "Principal"
+        monitors::LABEL_MONITOR_PRIMARY
     } else {
-        "Secundario"
+        monitors::LABEL_MONITOR_SECONDARY
     };
     let id = mon.id().to_string();
     let label = mon.label().to_string();
 
-    let button = gtk::ToggleButton::with_label(&format!("{kind}\n{label}"));
-    button.set_size_request(150, 70);
+    let button = gtk::ToggleButton::with_label(
+        &monitors::CARD_FORMAT.replace("{kind}", kind).replace("{label}", &label),
+    );
+    button.set_size_request(monitors::layout::CARD_WIDTH, monitors::layout::CARD_HEIGHT);
     button.set_halign(gtk::Align::Start);
-    button.add_css_class("card");
+    button.add_css_class(monitors::CSS_CARD);
     button.set_active(mon.is_selected());
 
     if mon.is_primary() {

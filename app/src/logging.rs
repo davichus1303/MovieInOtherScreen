@@ -18,8 +18,9 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-/** Name of the log file inside the data directory. */
-const LOG_FILE_NAME: &str = "movies-on-other-screens.log";
+use crate::constants::logging::{
+    APP_DATA_DIR, DIR_LOCAL, DIR_SHARE, FILE_NAME, LINE_FORMAT, env as log_env, levels,
+};
 
 /** Serializes writes to the file between threads. */
 static LOG_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -38,9 +39,9 @@ pub enum Level {
 impl Level {
     fn tag(self) -> &'static str {
         match self {
-            Level::Info => "INFO",
-            Level::Warning => "WARN",
-            Level::Error => "ERROR",
+            Level::Info => levels::INFO,
+            Level::Warning => levels::WARN,
+            Level::Error => levels::ERROR,
         }
     }
 }
@@ -51,14 +52,14 @@ impl Level {
  * Prioritizes `$XDG_DATA_HOME`; if it is not defined, uses `~/.local/share`.
  */
 pub fn log_file_path() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
+    let base = std::env::var_os(log_env::XDG_DATA_HOME)
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").unwrap_or_default();
-            PathBuf::from(home).join(".local").join("share")
+            let home = std::env::var_os(log_env::HOME).unwrap_or_default();
+            PathBuf::from(home).join(DIR_LOCAL).join(DIR_SHARE)
         });
-    base.join("movies-on-other-screens").join(LOG_FILE_NAME)
+    base.join(APP_DATA_DIR).join(FILE_NAME)
 }
 
 /**
@@ -78,7 +79,10 @@ pub fn log(level: Level, message: &str) -> bool {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let line = format!("[{now}] {}: {message}\n", level.tag());
+    let line = LINE_FORMAT
+        .replace("{now}", &now.to_string())
+        .replace("{}", level.tag())
+        .replace("{message}", message);
 
     let path = log_file_path();
     if let Some(parent) = path.parent() {

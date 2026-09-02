@@ -27,22 +27,25 @@ use crate::player::PlayerCommand;
 
 /** Records success/error marks of playback in the log file. */
 mod playback_log {
+    use crate::constants::playback::logs::{
+        MISSING_INDEX_PREFIX, NO_SELECTION, QUEUED_PREFIX, SEND_FAIL,
+    };
     use crate::logging;
     use crate::reporting::{self, ErrorKind};
 
     /** Success message after the video load was queued. */
     pub(super) fn started(path: &str) -> bool {
-        logging::info(format!("Reproducción encolada: {path}"))
+        logging::info(format!("{QUEUED_PREFIX}{path}"))
     }
 
     /** Message when the list does not contain the requested index. */
     pub(super) fn missing_index(index: usize) -> bool {
-        logging::warn(format!("Índice fuera de rango al reproducir: {index}"))
+        logging::warn(format!("{MISSING_INDEX_PREFIX}{index}"))
     }
 
     /** Message when the channel to the engine does not accept the command (engine down or closed). */
     pub(super) fn send_failed(path: &str) -> bool {
-        let msg = format!("No se pudo enviar la orden de carga al motor mpv: {path}");
+        let msg = format!("{SEND_FAIL}{path}");
         logging::error(&msg);
         reporting::report(ErrorKind::Player, &msg);
         false
@@ -50,7 +53,7 @@ mod playback_log {
 
     /** Message when there is no active selection (only applies to variants that require it, such as the "Play" button). */
     pub(super) fn no_selection() -> bool {
-        logging::warn("Reproducir solicitado sin vídeo seleccionado")
+        logging::warn(NO_SELECTION)
     }
 }
 
