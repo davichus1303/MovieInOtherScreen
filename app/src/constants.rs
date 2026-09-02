@@ -64,10 +64,34 @@ pub mod monitors {
     pub const LABEL_MONITOR_PRIMARY: &str = "Principal";
     /** Label of a secondary monitor. */
     pub const LABEL_MONITOR_SECONDARY: &str = "Secundario";
-    /** Card format (kind and label). */
-    pub const CARD_FORMAT: &str = "{kind}\n{label}";
+    /** Card format (id, kind and label). */
+    pub const CARD_FORMAT: &str = "{id}\n{kind}\n{label}";
     /** CSS class of a monitor card. */
     pub const CSS_CARD: &str = "card";
+    /** Label of the button that identifies the screens. */
+    pub const LABEL_IDENTIFY_BUTTON: &str = "Identificar pantallas";
+
+    /** Constants for the screen identification overlay. */
+    pub mod identify {
+        /** CSS class of the identifier badge. */
+        pub const CSS_LABEL: &str = "identify-label";
+        /** How long the identification stays visible (ms). */
+        pub const DURATION_MS: u32 = 5_000;
+        /** Emphasized font size (pt) of the identifier badge. */
+        pub const FONT_SIZE: i32 = 48;
+        /** Background color (RGBA) of the identifier badge. */
+        pub const BG_COLOR: &str = "rgba(0, 0, 0, 0.75)";
+        /** Text color (RGBA) of the identifier badge. */
+        pub const FG_COLOR: &str = "rgba(255, 255, 255, 1)";
+        /** Corner radius (px) of the identifier badge. */
+        pub const RADIUS: i32 = 12;
+        /** Padding (px) of the identifier badge. */
+        pub const PADDING: i32 = 16;
+        /** Top margin of the badge (px). */
+        pub const MARGIN_TOP: i32 = 16;
+        /** End (right) margin of the badge (px). */
+        pub const MARGIN_END: i32 = 16;
+    }
 
     pub mod layout {
         /** Spacing of the section box. */

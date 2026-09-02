@@ -2,6 +2,8 @@
 
 use gtk::prelude::*;
 
+use libadwaita as adw;
+
 use crate::constants::monitors;
 use crate::events::AppState;
 use crate::mirror::MirrorController;
@@ -13,6 +15,7 @@ pub struct MonitorDeps {
     pub player: std::sync::mpsc::Sender<PlayerCommand>,
     pub mirror: std::rc::Rc<std::cell::RefCell<MirrorController>>,
     pub monitors: std::rc::Rc<std::cell::RefCell<MonitorSet>>,
+    pub application: adw::Application,
 }
 
 /** Builds the complete monitors section (title + hint + row). */
@@ -45,6 +48,14 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     let mirrors = monitors_row(deps);
     mirrors.set_halign(gtk::Align::Start);
     section.append(&mirrors);
+
+    let identify = gtk::Button::with_label(monitors::LABEL_IDENTIFY_BUTTON);
+    identify.set_halign(gtk::Align::Start);
+    let application = deps.application.clone();
+    identify.connect_clicked(move |_| {
+        crate::identify::show_all(&application);
+    });
+    section.append(&identify);
 
     section
 }
@@ -127,10 +138,15 @@ pub fn monitor_card(mon: &Monitor, deps: &MonitorDeps) -> gtk::ToggleButton {
         monitors::LABEL_MONITOR_SECONDARY
     };
     let id = mon.id().to_string();
+    let id_num = id
+        .strip_prefix(monitors::ID_PREFIX)
+        .map(str::to_owned)
+        .unwrap_or_else(|| id.clone());
     let label = mon.label().to_string();
 
     let button = gtk::ToggleButton::with_label(
         &monitors::CARD_FORMAT
+            .replace("{id}", &id_num)
             .replace("{kind}", kind)
             .replace("{label}", &label),
     );

@@ -14,6 +14,7 @@ mod constants;
 mod engine;
 mod events;
 mod hwaccel;
+mod identify;
 mod logging;
 mod mirror;
 mod monitor_widget;
