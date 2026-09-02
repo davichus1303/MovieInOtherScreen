@@ -1,0 +1,229 @@
+//! Sidebar de la aplicación: lista de videos, monitores y selector de audio.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use gtk::glib;
+use gtk::prelude::*;
+
+use libadwaita as adw;
+
+use mos_core::video_list::VideoList;
+use mos_core::monitors::MonitorSet;
+
+use crate::mirror;
+use crate::player::{PlayerCommand, PlayerEvent};
+use crate::audio::AudioSection;
+use crate::monitor_widget;
+use crate::events::AppState;
+use crate::events::mirror_on_play;
+
+/// Estado necesario para construir el sidebar.
+pub struct SidebarDeps {
+    pub videos: Rc<RefCell<VideoList>>,
+    pub player: std::sync::mpsc::Sender<PlayerCommand>,
+    pub mirror: Rc<RefCell<crate::mirror::MirrorController>>,
+    pub monitors: Rc<RefCell<MonitorSet>>,
+}
+
+/// Construye la barra lateral completa (videos + monitores + audio).
+pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
+    let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    sidebar.set_margin_top(12);
+    sidebar.set_margin_bottom(12);
+    sidebar.set_margin_start(12);
+    sidebar.set_margin_end(12);
+    sidebar.set_width_request(280);
+
+    // --- Sección de videos ---
+    let videos_header = gtk::Label::new(Some("Archivos de video"));
+    videos_header.add_css_class("title-4");
+    videos_header.set_halign(gtk::Align::Start);
+    sidebar.append(&videos_header);
+
+    let add_button = gtk::Button::with_label("＋ Agregar videos");
+    add_button.set_halign(gtk::Align::Start);
+    sidebar.append(&add_button);
+
+    let list = gtk::ListBox::new();
+    list.set_vexpand(true);
+    list.set_selection_mode(gtk::SelectionMode::Single);
+    sidebar.append(&list);
+
+    let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    sidebar.append(&separator);
+
+    let clear_button = gtk::Button::with_label("Limpiar selección");
+    clear_button.set_halign(gtk::Align::Start);
+    sidebar.append(&clear_button);
+
+    // Conexiones de la lista de videos
+    connect_video_list(&list, &add_button, &clear_button, &deps);
+
+    let separator2 = gtk::Separator::new(gtk::Orientation::Horizontal);
+    sidebar.append(&separator2);
+
+    // --- Sección de monitores ---
+    let monitors_header = gtk::Label::new(Some("Monitores"));
+    monitors_header.add_css_class("title-4");
+    monitors_header.set_halign(gtk::Align::Start);
+    sidebar.append(&monitors_header);
+
+    let monitors_widget = monitor_widget::build_monitors_section(&monitor_widget::MonitorDeps {
+        player: deps.player.clone(),
+        mirror: deps.mirror.clone(),
+        monitors: deps.monitors.clone(),
+    });
+    sidebar.append(&monitors_widget);
+
+    let separator3 = gtk::Separator::new(gtk::Orientation::Horizontal);
+    sidebar.append(&separator3);
+
+    // --- Sección de audio ---
+    let audio_deps = crate::audio::AudioDeps {
+        player: deps.player.clone(),
+        mirror: deps.mirror.clone(),
+    };
+    let audio_section = crate::audio::AudioSection::new(&audio_deps);
+    sidebar.append(&audio_section.build());
+
+    sidebar
+}
+
+/// Conecta la lista de videos: agregar, reproducir, limpiar.
+fn connect_video_list(
+    list: &gtk::ListBox,
+    add_button: &gtk::Button,
+    clear_button: &gtk::Button,
+    deps: &SidebarDeps,
+) {
+    // ============================================================
+    // CRITICAL: Clone EVERYTHING from deps UPFRONT before ANY closures
+    // This avoids capturing `deps` (a reference) in 'static closures
+    // ============================================================
+    
+    // Pre-clone everything from deps
+    let videos = deps.videos.clone();
+    let player = deps.player.clone();
+    let mirror = deps.mirror.clone();
+    let monitors = deps.monitors.clone();
+    let list_clone = list.clone();
+    
+    // --- For add_button closure ---
+    let videos_for_add = videos.clone();
+    let list_for_add = list_clone.clone();
+    
+    // --- For row_activated closure ---
+    let videos_for_row = videos.clone();
+    let player_for_row = player.clone();
+    let mirror_for_row = mirror.clone();
+    let monitors_for_row = monitors.clone();
+    let list_for_row = list_clone.clone();
+    
+    // --- For clear_button closure ---
+    let videos_for_clear = videos.clone();
+    let list_for_clear = list_clone.clone();
+
+    // --- add_button closure ---
+    add_button.connect_clicked(move |btn| {
+        let Some(window) = btn.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+
+        let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some("Vídeos"));
+        for pattern in [
+            "*.mp4", "*.mkv", "*.webm", "*.avi", "*.mov", "*.m4v", "*.ogv", "*.ts", "*.m2ts",
+        ] {
+            filter.add_pattern(pattern);
+        }
+        filters.append(&filter);
+
+        // Use PRE-CLONED values, NOT deps
+        let videos_for_dialog = videos_for_add.clone();
+        let list_for_dialog = list_for_add.clone();
+        let list_for_add_closure = list_for_add.clone();
+        
+        let dialog = gtk::FileDialog::builder()
+            .title("Seleccionar vídeos")
+            .modal(true)
+            .accept_label("Seleccionar")
+            .build();
+        dialog.set_filters(Some(&filters));
+
+        dialog.open_multiple(
+            Some(&window),
+            None::<&gtk::gio::Cancellable>,
+            {
+                let videos_for_add_closure = videos_for_add.clone();
+                let list_for_add_closure_inner = list_for_add_closure.clone();
+                move |result| {
+                    let Ok(model) = result else {
+                        return;
+                    };
+                    let new_videos: Vec<_> = model
+                        .iter::<gtk::gio::File>()
+                        .filter_map(Result::ok)
+                        .filter_map(|f| f.path())
+                        .map(mos_core::video_list::Video::new)
+                        .collect();
+                    if !new_videos.is_empty() {
+                        let value = videos_for_add_closure.clone();
+                        value.borrow_mut().add(new_videos);
+                        rebuild_list(&list_for_add_closure_inner, &value);
+                    }
+                }
+            },
+        );
+    });
+
+    // --- row_activated closure ---
+    let list_for_row = list_clone.clone();
+    
+    list_for_row.connect_row_activated(move |_list, row| {
+        let path = {
+            let borrowed = videos_for_row.borrow();
+            match borrowed.get(row.index() as usize) {
+                Some(v) => Some(v.path().to_string_lossy().into_owned()),
+                None => None,
+            }
+        };
+        let Some(path) = path else {
+            return;
+        };
+        // Use the cloned player, mirror, monitors
+        let _ = player_for_row.send(crate::player::PlayerCommand::Load(path.clone()));
+        let st = AppState {
+            player: player_for_row.clone(),
+            monitors: monitors.clone(),
+            mirror: mirror_for_row.clone(),
+        };
+        mirror_on_play(&st, path);
+    });
+
+    // --- clear_button closure ---
+    let videos_for_clear_closure = videos_for_clear.clone();
+    let list_for_clear = list_clone.clone();
+    clear_button.connect_clicked(move |_| {
+        videos_for_clear_closure.borrow_mut().clear_selection();
+        list_for_clear.unselect_all();
+    });
+
+    rebuild_list(&list_clone, &videos_for_clear);
+}
+
+/// Refresca las filas de la lista con los vídeos del estado.
+fn rebuild_list(list: &gtk::ListBox, videos: &Rc<RefCell<VideoList>>) {
+    while let Some(row) = list.row_at_index(0) {
+        list.remove(&row);
+    }
+    for video in videos.borrow().iter() {
+        let row = gtk::ListBoxRow::new();
+        let label = gtk::Label::new(Some(video.name()));
+        label.set_halign(gtk::Align::Start);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        row.set_child(Some(&label));
+        list.append(&row);
+    }
+}

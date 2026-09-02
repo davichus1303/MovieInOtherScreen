@@ -7,10 +7,15 @@
 //! 3. Delegar la construcción de la interfaz a `app`.
 
 mod app;
+mod audio;
+mod events;
 mod logging;
 mod mirror;
+mod monitor_widget;
 mod playback;
 mod player;
+mod player_area;
+mod sidebar;
 mod wayland;
 
 use gtk::glib;
