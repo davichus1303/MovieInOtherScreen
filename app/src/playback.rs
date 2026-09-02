@@ -1,18 +1,20 @@
-//! Reproducción reutilizable de un vídeo de la lista.
-//!
-//! Centraliza la única vía para pedir al reproductor que reproduzca un vídeo
-//! de la lista: [`play_index`][`play_from_list`] resuelve el vídeo por su
-//! índice y manda `PlayerCommand::Load(path)` al hilo del motor. La salida
-//! visual la pinta de forma independiente el motor mpv embebido
-//! ([`crate::player::embed`]) en el área de reproducción de la app.
-//!
-//! Esta capa **no** contiene lógica de reproducción: solo traduce una
-//! selección de la UI en el comando de carga correspondiente, y registra en
-//! el log el resultado (inicio o error) para poder diagnosticar fallos.
-//!
-//! Está pensada para reutilizarse desde cualquier punto de la interfaz (doble
-//! clic en la lista, botón "Reproducir", arrastrar y soltar, etc.); cada
-//! llamada converge en el mismo `PlayerCommand::Load`.
+/*
+ * Reusable playback of a video from the list.
+ *
+ * Centralizes the only way to ask the player to play a video from the list:
+ * [`play_index`][`play_from_list`] resolves the video by its index and sends
+ * `PlayerCommand::Load(path)` to the engine thread. The visual output is
+ * painted independently by the embedded mpv engine
+ * ([`crate::player::embed`]) in the app's playback area.
+ *
+ * This layer **does not** contain playback logic: it only translates a UI
+ * selection into the corresponding load command, and logs the result (start
+ * or error) so failures can be diagnosed.
+ *
+ * It is meant to be reused from anywhere in the interface (double click on
+ * the list, the "Play" button, drag and drop, etc.); every call converges on
+ * the same `PlayerCommand::Load`.
+ */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,23 +25,22 @@ use mos_core::video_list::VideoList;
 
 use crate::player::PlayerCommand;
 
-/// Registra las marcas de éxito/error de la reproducción en el archivo de log.
+/** Records success/error marks of playback in the log file. */
 mod playback_log {
     use crate::logging;
     use crate::reporting::{self, ErrorKind};
 
-    /// Mensaje de éxito tras encolar la carga del vídeo.
+    /** Success message after the video load was queued. */
     pub(super) fn started(path: &str) -> bool {
         logging::info(format!("Reproducción encolada: {path}"))
     }
 
-    /// Mensaje cuando la lista no contiene el índice solicitado.
+    /** Message when the list does not contain the requested index. */
     pub(super) fn missing_index(index: usize) -> bool {
         logging::warn(format!("Índice fuera de rango al reproducir: {index}"))
     }
 
-    /// Mensaje cuando el canal hacia el motor no acepta el comando (motor
-    /// caído o cerrado).
+    /** Message when the channel to the engine does not accept the command (engine down or closed). */
     pub(super) fn send_failed(path: &str) -> bool {
         let msg = format!("No se pudo enviar la orden de carga al motor mpv: {path}");
         logging::error(&msg);
@@ -47,18 +48,19 @@ mod playback_log {
         false
     }
 
-    /// Mensaje cuando no hay selección activa (solo aplica a variantes que la
-    /// requieren, como el botón "Reproducir").
+    /** Message when there is no active selection (only applies to variants that require it, such as the "Play" button). */
     pub(super) fn no_selection() -> bool {
         logging::warn("Reproducir solicitado sin vídeo seleccionado")
     }
 }
 
-/// Carga en el reproductor el vídeo de la lista con índice `index`.
-///
-/// Es la función central y reutilizable: no toca nada de la UI salvo leer del
-/// estado compartido. Devuelve `true` si se envió el comando de carga al
-/// motor. Registra en el log el inicio o el error según el resultado.
+/**
+ * Loads the video with index `index` from the list into the player.
+ *
+ * It is the central and reusable function: it touches nothing in the UI
+ * except reading shared state. Returns `true` if the load command was sent to
+ * the engine. Logs the start or the error depending on the result.
+ */
 pub fn play_from_list(
     videos: &Rc<RefCell<VideoList>>,
     index: usize,
@@ -84,10 +86,12 @@ pub fn play_from_list(
     sent
 }
 
-/// Reproduce el vídeo actualmente seleccionado en la lista.
-///
-/// Variante reutilizable para flujos basados en selección (p. ej. el botón
-/// "Reproducir"). Devuelve `true` si había selección y se envió el comando.
+/**
+ * Plays the currently selected video in the list.
+ *
+ * Reusable variant for selection-based flows (e.g. the "Play" button).
+ * Returns `true` if there was a selection and the command was sent.
+ */
 pub fn play_selected(
     videos: &Rc<RefCell<VideoList>>,
     player: &std::sync::mpsc::Sender<PlayerCommand>,
@@ -101,10 +105,12 @@ pub fn play_selected(
     }
 }
 
-/// Conecta la reproducción al doble clic (o Enter) sobre una fila de la lista.
-///
-/// Es el comportamiento actualmente activo: reproducir pulsando un vídeo de
-/// la lista lateral. Reutiliza [`play_from_list`].
+/**
+ * Connects playback to double click (or Enter) on a row of the list.
+ *
+ * It is the currently active behavior: play by clicking a video in the side
+ * list. Reuses [`play_from_list`].
+ */
 pub fn connect_double_click(
     list: &gtk::ListBox,
     videos: &Rc<RefCell<VideoList>>,
@@ -117,10 +123,12 @@ pub fn connect_double_click(
     });
 }
 
-/// Conecta un botón para lanzar el vídeo seleccionado en la lista.
-///
-/// Toma la selección activa (la fila subrayada) cada vez que se pulsa el
-/// botón. Reutiliza [`play_selected`].
+/**
+ * Connects a button to launch the selected video in the list.
+ *
+ * Takes the active selection (the highlighted row) each time the button is
+ * pressed. Reuses [`play_selected`].
+ */
 pub fn connect_play_button(
     button: &gtk::Button,
     videos: &Rc<RefCell<VideoList>>,

@@ -1,14 +1,15 @@
-//! Capa de reproducción: un reproductor lógico único, ejecutado en su propio
-//! hilo, que envuelve libmpv.
-//!
-//! Objetivos de diseño:
-//! - **Un único reproductor lógico**: existe una sola instancia de libmpv, por
-//!   tanto un único proceso de decodificación y un único flujo de audio, sin
-//!   duplicaciones.
-//! - **Sin bloqueos de la UI**: mpv vive en un hilo dedicado; la UI se
-//!   comunica por canales (`mpsc`).
-//! - **Bajo acoplamiento con la UI**: la UI envía `PlayerCommand` y recibe
-//!   `PlayerEvent`; nunca toca libmpv directamente.
+/*!
+ * Playback layer: a single logical player, running on its own thread,
+ * wrapping libmpv.
+ *
+ * Design goals:
+ * - **Single logical player**: only one instance of libmpv exists, hence one
+ *   decoding process and one audio stream, with no duplication.
+ * - **No UI blocking**: mpv lives on a dedicated thread; the UI communicates
+ *   via channels (`mpsc`).
+ * - **Loose coupling with the UI**: the UI sends `PlayerCommand` and receives
+ *   `PlayerEvent`; it never touches libmpv directly.
+ */
 
 pub mod embed;
 pub mod ffi;
@@ -16,25 +17,25 @@ pub mod mpv_engine;
 
 use std::sync::mpsc::{Receiver, Sender};
 
-/// Comandos enviados por la UI al hilo del reproductor.
+/** Commands sent by the UI to the player thread. */
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerCommand {
-    /// Carga un vídeo nuevo por su ruta.
+    /** Loads a new video by its path. */
     Load(String),
     Play,
     Pause,
     Stop,
-    /// Descarga por completo el vídeo actual (deja el reproductor sin archivo).
+    /** Fully unloads the current video (leaves the player without a file). */
     Unload,
-    /// Busca a una posición en segundos.
+    /** Seeks to a position in seconds. */
     Seek(f64),
-    /// Conmuta play/pausa según el estado actual.
+    /** Toggles play/pause based on the current state. */
     TogglePause,
-    /// Solicita terminar el hilo.
+    /** Requests thread termination. */
     Shutdown,
 }
 
-/// Eventos que el reproductor publica hacia la UI.
+/** Events the player publishes to the UI. */
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerEvent {
     Position(f64),
@@ -44,10 +45,12 @@ pub enum PlayerEvent {
     PlaybackError(String),
 }
 
-/// Crea los canales de comunicación con el reproductor.
-///
-/// Devuelve `(comandos, eventos)` y el hilo que posee la única instancia de
-/// mpv ya arrancado.
+/**
+ * Creates the communication channels with the player.
+ *
+ * Returns `(commands, events)` and the thread that owns the single instance
+ * of mpv already started.
+ */
 pub fn spawn_player() -> (Sender<PlayerCommand>, Receiver<PlayerEvent>) {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
     let (ev_tx, ev_rx) = std::sync::mpsc::channel();

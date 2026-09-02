@@ -1,21 +1,23 @@
-//! Implementación del reproductor sobre libmpv, ejecutada en un hilo propio.
-//!
-//! Posee **una única instancia de libmpv**: una única decodificación y un
-//! único flujo de audio. La UI nunca toca libmpv directamente; se comunica
-//! por `PlayerCommand`/`PlayerEvent`.
-//!
-//! ## Limitación conocida y verificada (libmpv)
-//!
-//! Según `libmpv/render.h`, *"at most 1 mpv_render_context can exist per mpv
-//! core (it represents the main video output)"*. Por tanto libmpv **no**
-//! permite duplicar una misma reproducción a varios monitores en pantalla
-//! completa desde un único núcleo.
-//!
-//! Este motor mantiene la reproducción lógica única (un solo decode y un solo
-//! audio, que es el requisito central) y la muestra en una ventana. La
-//! duplicación exacta a N monitores sincronizados queda registrada como
-//! limitación y como trabajo futuro (composición GL con relectura de frames,
-//! enfoque tipo `mpvpaper`), al no estar soportada por la API de libmpv.
+/*!
+ * Player implementation on libmpv, running on its own thread.
+ *
+ * It owns **a single instance of libmpv**: one decoding process and one
+ * audio stream. The UI never touches libmpv directly; it communicates
+ * via `PlayerCommand`/`PlayerEvent`.
+ *
+ * ## Known and verified limitation (libmpv)
+ *
+ * According to `libmpv/render.h`, *"at most 1 mpv_render_context can exist
+ * per mpv core (it represents the main video output)"*. Therefore libmpv
+ * **does not** allow duplicating the same playback to multiple full-screen
+ * monitors from a single core.
+ *
+ * This engine maintains the unique logical playback (one decode and one
+ * audio, which is the core requirement) and displays it in a window. The
+ * exact duplication to N synchronized monitors is recorded as a limitation
+ * and future work (GL composition with frame re-reading, `mpvpaper`-style
+ * approach), since it is not supported by the libmpv API.
+ */
 
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -23,23 +25,25 @@ use std::sync::{Mutex, OnceLock};
 use super::{PlayerCommand, PlayerEvent};
 use crate::logging;
 
-/// Duración (segundos) de la transición gradual al cambiar de vídeo.
+/** Duration (seconds) of the gradual transition when changing videos. */
 pub const TRANSITION_SECONDS: f64 = 3.0;
 
-/// Handle libmpv compartido con la capa de render (GLArea de la UI).
-///
-/// El único core de mpv se crea en el hilo del motor; la UI necesita ese
-/// handle para crear el `mpv_render_context` embebido. Se fija una sola vez
-/// al arrancar la sesión (no cambia mientras la app vive).
-///
-/// Un raw pointer no es `Send`; el wrapper marca el handle como seguro de
-/// compartir entre hilos (el ocupa se usa de forma sincronizada con el mutex).
+/**
+ * Shared libmpv handle with the render layer (UI GLArea).
+ *
+ * The single mpv core is created on the engine thread; the UI needs that
+ * handle to create the embedded `mpv_render_context`. It is set once when
+ * the session starts (it does not change while the app is alive).
+ *
+ * A raw pointer is not `Send`; the wrapper marks the handle as safe to
+ * share across threads (it is used in a synchronized manner with the mutex).
+ */
 struct MpvHandle(super::ffi::mpv_handle);
 unsafe impl Send for MpvHandle {}
 
 static RENDER_HANDLE: OnceLock<Mutex<Option<MpvHandle>>> = OnceLock::new();
 
-/// Devuelve el handle de mpv si el motor ya lo creó.
+/** Returns the mpv handle if the engine has already created it. */
 pub fn mpv_handle() -> Option<super::ffi::mpv_handle> {
     RENDER_HANDLE
         .get()
@@ -47,10 +51,12 @@ pub fn mpv_handle() -> Option<super::ffi::mpv_handle> {
         .and_then(|g| g.as_ref().map(|h| h.0))
 }
 
-/// Arranca el hilo del reproductor y devuelve su handle.
-///
-/// El hilo crea y posee la única instancia de mpv, escucha `commands` y
-/// publica `events`.
+/**
+ * Starts the player thread and returns its handle.
+ *
+ * The thread creates and owns the single instance of mpv, listens to
+ * `commands` and publishes `events`.
+ */
 pub fn spawn(
     commands: Receiver<PlayerCommand>,
     events: Sender<PlayerEvent>,
@@ -135,14 +141,14 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
     }
 }
 
-/// Sesión homogénea sobre la instancia única de mpv.
+/** Session wrapper around the single mpv instance. */
 struct MpvSession {
     handler: mpv::MpvHandler,
     events: Sender<PlayerEvent>,
     paused: bool,
 }
 
-/// Categoría de locale `LC_NUMERIC` (definición POSIX).
+/** `LC_NUMERIC` locale category (POSIX definition). */
 const LC_NUMERIC: i32 = 1;
 
 unsafe extern "C" {
@@ -226,9 +232,11 @@ impl MpvSession {
         self.set_paused(true);
     }
 
-    /// Descarga por completo el vídeo actual, dejando el reproductor sin
-    /// archivo: la GLArea queda vacía y ya no se puede volver a reproducir
-    /// nada hasta cargar otro vídeo.
+    /**
+     * Fully unloads the current video, leaving the player without a file:
+     * the GLArea becomes empty and nothing can be played again until
+     * another video is loaded.
+     */
     fn unload(&mut self) {
         let _ = self.handler.set_property("pause", true);
         // Cargar una ruta vacía desvincula el archivo actual del core de mpv.
@@ -252,11 +260,13 @@ impl MpvSession {
         let _ = self.events.send(PlayerEvent::Paused(paused));
     }
 
-    /// Aplica una transición gradual de entrada (~3 s) antes del cambio.
-    ///
-    /// libmpv no ofrece un fundido cruzado nativo entre dos vídeos de la
-    /// secuencia; como aproximación correcta y no brusca se aplica un fundido
-    /// de entrada de vídeo y audio al cargar el nuevo elemento.
+    /**
+     * Applies a gradual input transition (~3 s) before the change.
+     *
+     * libmpv does not offer a native crossfade between two videos in the
+     * sequence; as a smooth and non-abrupt approximation, a video and audio
+     * fade-in is applied when loading the new item.
+     */
     fn apply_transition_into(&mut self) {
         let _ = self
             .handler

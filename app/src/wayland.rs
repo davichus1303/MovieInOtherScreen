@@ -1,9 +1,11 @@
-//! Comprobación del entorno gráfico obligatorio: Wayland.
-//!
-//! La aplicación solo es compatible con Wayland. Bajo X11 muestra un mensaje
-//! claro y sale de forma segura, sin intentar una compatibilidad parcial.
+/*
+ * Check of the mandatory graphical environment: Wayland.
+ *
+ * The application is only compatible with Wayland. Under X11 it shows a
+ * clear message and exits safely, without attempting partial compatibility.
+ */
 
-/// Fuente de verdad sobre el backend gráfico.
+/** Source of truth about the graphics backend. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphicsBackend {
     Wayland,
@@ -11,10 +13,12 @@ pub enum GraphicsBackend {
     Unknown,
 }
 
-/// Infiere el backend a partir de las variables de entorno.
-///
-/// Preferimos `XDG_SESSION_TYPE` cuando está disponible y es explícito; en
-/// caso de duda consultamos las variables propias de cada protocolo.
+/**
+ * Infers the backend from the environment variables.
+ *
+ * We prefer `XDG_SESSION_TYPE` when it is available and explicit; in case of
+ * doubt we consult the protocol-specific variables.
+ */
 pub fn detect_backend() -> GraphicsBackend {
     if let Ok(session) = std::env::var("XDG_SESSION_TYPE") {
         if session.eq_ignore_ascii_case("wayland") {
@@ -39,7 +43,7 @@ fn resolve_protocol_variables() -> GraphicsBackend {
     }
 }
 
-/// Mensaje que se muestra al usuario cuando el entorno no es compatible.
+/** Message shown to the user when the environment is not compatible. */
 pub const REQUIREMENT_MESSAGE: &str = "\
 Movies on Other Screens requiere Wayland para funcionar.
 

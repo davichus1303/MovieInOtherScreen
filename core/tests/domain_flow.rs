@@ -1,8 +1,9 @@
-//! Tests de integración de la capa de dominio: varios módulos colaborando.
-//!
-//! Ejerce un flujo realista de la aplicación a nivel de lógica (sin GTK):
-//! navegación de vídeos + control de reproducción + selección de monitores +
-//! selección de audio + persistencia de configuración.
+/*! Domain layer integration tests: multiple modules collaborating.
+ *
+ * Exercises a realistic application flow at the logic level (no GTK):
+ * video navigation + playback control + monitor selection +
+ * audio selection + configuration persistence.
+ */
 
 use mos_core::audio::{AudioDevice, AudioDevices};
 use mos_core::config::{self, keys};

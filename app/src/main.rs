@@ -1,10 +1,12 @@
-//! Punto de entrada de la aplicación.
-//!
-//! Responsabilidades:
-//! 1. Verificar el requisito obligatorio de Wayland (bajo X11 se informa y se
-//!    sale de forma segura).
-//! 2. Inicializar GTK/libadwaita.
-//! 3. Delegar la construcción de la interfaz a `app`.
+/*
+ * Application entry point.
+ *
+ * Responsibilities:
+ * 1. Verify the mandatory Wayland requirement (under X11 it reports and
+ *    exits safely).
+ * 2. Initialize GTK/libadwaita.
+ * 3. Delegate the construction of the interface to `app`.
+ */
 
 mod app;
 mod audio;
@@ -29,7 +31,7 @@ use libadwaita as adw;
 
 const APPLICATION_ID: &str = "io.github.davichus1303.MoviesOnOtherScreens";
 
-/// Categoría de locale `LC_NUMERIC` (definición POSIX).
+/** `LC_NUMERIC` locale category (POSIX definition). */
 const LC_NUMERIC: i32 = 1;
 
 unsafe extern "C" {
@@ -62,29 +64,33 @@ fn main() -> glib::ExitCode {
     application.run()
 }
 
-/// libmpv exige `LC_NUMERIC` en `"C"`; si no, `mpv_create()` falla con
-/// `MPV_ERROR_NOMEM` (mensaje engañoso, véase documentación del crate `mpv`).
-/// En una sesión con locale no-C hay que ajustarlo antes de inicializar mpv.
+/**
+ * libmpv requires `LC_NUMERIC` to be `"C"`; otherwise `mpv_create()` fails
+ * with `MPV_ERROR_NOMEM` (misleading message, see the `mpv` crate docs).
+ * In a session with a non-C locale, it must be adjusted before initializing mpv.
+ */
 fn init_locale_for_mpv() {
     unsafe {
         setlocale(LC_NUMERIC, b"C\0".as_ptr());
     }
 }
 
-/// Devuelve `true` si debe continuar la ejecución (entorno Wayland).
+/** Returns `true` if execution should continue (Wayland environment). */
 fn require_wayland() -> bool {
     matches!(wayland::detect_backend(), wayland::GraphicsBackend::Wayland)
 }
 
-/// Muestra el mensaje de requisito y termina con un código de salida claro.
+/** Shows the requirement message and exits with a clear exit code. */
 fn show_requirement_message_and_exit() -> glib::ExitCode {
     eprintln!("{}", wayland::REQUIREMENT_MESSAGE);
     glib::ExitCode::from(1)
 }
 
-/// Instala un manejador de pánico global que registra y notifica cualquier
-/// fallo inesperado (p. ej. el cierre inesperado al deseleccionar un monitor)
-/// en los logs y en la interfaz, en lugar de que la app se cierre en silencio.
+/**
+ * Installs a global panic handler that logs and notifies any unexpected
+ * failure (e.g. the unexpected close when deselecting a monitor) in the logs
+ * and in the interface, instead of the app closing silently.
+ */
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

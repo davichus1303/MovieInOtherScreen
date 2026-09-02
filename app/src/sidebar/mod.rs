@@ -1,4 +1,4 @@
-//! Sidebar de la aplicación: lista de vídeos y sus botones (agregar / limpiar).
+/*! Application sidebar: video list and its buttons (add / clear). */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,7 +15,7 @@ use crate::events::mirror_on_play;
 use crate::events::AppState;
 use crate::player::{PlayerCommand, PlayerEvent};
 
-/// Estado necesario para construir el sidebar.
+/** State needed to build the sidebar. */
 pub struct SidebarDeps {
     pub videos: Rc<RefCell<VideoList>>,
     pub player: std::sync::mpsc::Sender<PlayerCommand>,
@@ -23,7 +23,7 @@ pub struct SidebarDeps {
     pub monitors: Rc<RefCell<MonitorSet>>,
 }
 
-/// Construye la barra lateral: lista de vídeos con sus botones.
+/** Builds the side bar: video list with its buttons. */
 pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 8);
     sidebar.set_margin_top(12);
@@ -60,7 +60,7 @@ pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
     sidebar
 }
 
-/// Conecta la lista de videos: agregar, reproducir, limpiar.
+/** Connects the video list: add, play, clear. */
 fn connect_video_list(
     list: &gtk::ListBox,
     add_button: &gtk::Button,
@@ -187,7 +187,7 @@ fn connect_video_list(
     rebuild_list(&list_clone, &videos_for_clear);
 }
 
-/// Refresca las filas de la lista con los vídeos del estado.
+/** Refreshes the list rows with the videos from the state. */
 fn rebuild_list(list: &gtk::ListBox, videos: &Rc<RefCell<VideoList>>) {
     while let Some(row) = list.row_at_index(0) {
         list.remove(&row);

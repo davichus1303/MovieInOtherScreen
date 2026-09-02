@@ -1,20 +1,20 @@
-//! Persistencia de configuración en un fichero de texto sencillo.
-//!
-//! Solo se guarda aquello que aporta valor real al usuario (p. ej. el
-//! dispositivo de audio). Se usa un formato `clave=valor` simple, coherente
-//! con las convenciones de ficheros de configuración de Linux; no se justifica
-//! una base de datos.
+/*! Configuration persistence in a simple text file.
+ *
+ * Only stores what adds real value to the user (e.g. the audio device).
+ * Uses a simple `key=value` format, consistent with Linux configuration
+ * file conventions; a database is not justified.
+ */
 
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Claves de configuración conocidas.
+/** Known configuration keys. */
 pub mod keys {
     pub const AUDIO_DEVICE: &str = "audio_device";
 }
 
-/// Configuración en memoria, como lista ordenada de pares clave/valor.
+/** In-memory configuration, as an ordered list of key/value pairs. */
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Config {
     entries: Vec<(String, String)>,
@@ -42,14 +42,14 @@ impl Config {
     }
 }
 
-/// Ubicación del fichero de configuración según las convenciones XDG.
+/** Configuration file location following XDG conventions. */
 pub fn config_file_path(xdg_config_home: impl AsRef<Path>) -> PathBuf {
     let base = xdg_config_home.as_ref();
     let name = "movies-on-other-screens.conf".to_string();
     base.join(name)
 }
 
-/// Guarda la configuración en el fichero indicado (formato `clave=valor`).
+/** Saves the configuration to the specified file (`key=value` format). */
 pub fn save_to(path: &Path, config: &Config) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -64,9 +64,11 @@ pub fn save_to(path: &Path, config: &Config) -> io::Result<()> {
     std::fs::write(path, content)
 }
 
-/// Carga la configuración del fichero indicado.
-///
-/// Un fichero que no existe devuelve una configuración vacía (no es un error).
+/**
+ * Loads the configuration from the specified file.
+ *
+ * A file that does not exist returns an empty configuration (not an error).
+ */
 pub fn load_from(path: &Path) -> io::Result<Config> {
     if !path.exists() {
         return Ok(Config::new());

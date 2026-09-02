@@ -1,11 +1,12 @@
-//! Motor de reproducción: lógica pura para controlar la reproducción.
-//!
-//! Abstrae el reproductor (mpv u otro) detrás de un trait para que la UI
-//! y los tests no dependan de libmpv directamente.
+/*! Playback engine: pure logic for controlling playback.
+ *
+ * Abstracts the player (mpv or other) behind a trait so that the UI
+ * and tests do not depend on libmpv directly.
+ */
 
 use std::sync::mpsc::{Receiver, Sender};
 
-/// Comandos de reproducción de alto nivel (lenguaje del dominio).
+/** High-level playback commands (domain language). */
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlaybackCmd {
     Load(String),
@@ -18,7 +19,7 @@ pub enum PlaybackCmd {
     Shutdown,
 }
 
-/// Eventos que el motor publica.
+/** Events published by the engine. */
 #[derive(Debug, Clone)]
 pub enum PlaybackEvent {
     Position(f64),
@@ -28,7 +29,7 @@ pub enum PlaybackEvent {
     Error(String),
 }
 
-/// Trait que define el contrato del motor de reproducción.
+/** Trait defining the playback engine contract. */
 pub trait PlaybackEngine: Send + Sync {
     fn send(&self, cmd: PlaybackCmd) -> Result<(), String>;
     fn is_paused(&self) -> bool;
@@ -36,7 +37,7 @@ pub trait PlaybackEngine: Send + Sync {
     fn position(&self) -> f64;
 }
 
-/// Estado de reproducción observable.
+/** Observable playback state. */
 #[derive(Debug, Default, Clone)]
 pub struct PlaybackState {
     pub position: f64,
@@ -76,7 +77,7 @@ impl PlaybackState {
     }
 }
 
-/// Eventos internos del motor (para comunicación hilo UI ↔ motor).
+/** Internal engine events (for UI ↔ engine thread communication). */
 pub enum EngineEvent {
     Position(f64),
     Duration(f64),
@@ -85,7 +86,7 @@ pub enum EngineEvent {
     Error(String),
 }
 
-/// Inicia el motor de reproducción en un hilo dedicado.
+/** Starts the playback engine on a dedicated thread. */
 pub fn spawn_playback_engine(
     cmd_rx: Receiver<PlaybackCmd>,
     _event_tx: Sender<PlaybackEvent>,

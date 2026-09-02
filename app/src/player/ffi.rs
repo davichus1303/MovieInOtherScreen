@@ -1,11 +1,13 @@
-//! Interfaz FFI mínima sobre libmpv para la renderización embebida.
-//!
-//! Declara los símbolos y estructuras de `libmpv/render.h` y
-//! `libmpv/render_gl.h` que permiten dibujar la salida de vídeo en una
-//! superficie OpenGL propia (GTK4 `gtk::GLArea`), en lugar de dejar que mpv
-//! abra su propia ventana (`--force-window`). Es el enfoque que usa Celluloid
-//! (`vo=libmpv`). Las definiciones ABI copian exactamente
-//! `/usr/include/mpv/client.h` y `render_gl.h` (API estable de libmpv).
+/*!
+ * Minimal FFI interface over libmpv for embedded rendering.
+ *
+ * Declares the symbols and structures from `libmpv/render.h` and
+ * `libmpv/render_gl.h` that allow drawing the video output on a
+ * custom OpenGL surface (GTK4 `gtk::GLArea`), instead of letting mpv
+ * open its own window (`--force-window`). This is the approach used by
+ * Celluloid (`vo=libmpv`). The ABI definitions are an exact copy of
+ * `/usr/include/mpv/client.h` and `render_gl.h` (libmpv stable API).
+ */
 
 use std::os::raw::{c_char, c_int, c_void};
 
@@ -24,17 +26,19 @@ pub const MPV_RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
 pub const MPV_RENDER_PARAM_OPENGL_FBO: c_int = 3;
 pub const MPV_RENDER_PARAM_FLIP_Y: c_int = 4;
 
-/// Bitflag de `mpv_render_context_update()`: un frame de vídeo nuevo está
-/// disponible y hay que re-renderizar.
+/**
+ * Bitflag from `mpv_render_context_update()`: a new video frame is
+ * available and must be re-rendered.
+ */
 pub const MPV_RENDER_UPDATE_FRAME: u64 = 1;
 
-/// Constante OpenGL `GL_FRAMEBUFFER_BINDING`.
+/** OpenGL constant `GL_FRAMEBUFFER_BINDING`. */
 pub const GL_FRAMEBUFFER_BINDING: c_int = 0x8CA6;
 
-/// Cadena `char *` que identifica el render API OpenGL.
+/** `char *` string that identifies the OpenGL render API. */
 pub const MPV_RENDER_API_TYPE_OPENGL: &[u8] = b"opengl\0";
 
-/// Inicialización del backend OpenGL (`mpv_render_gl.h`).
+/** OpenGL backend initialization (`mpv_render_gl.h`). */
 #[repr(C)]
 pub struct mpv_opengl_init_params {
     pub get_proc_address:
@@ -42,7 +46,7 @@ pub struct mpv_opengl_init_params {
     pub get_proc_address_ctx: *mut c_void,
 }
 
-/// Objetivo de renderizado (`mpv_render_gl.h`).
+/** Render target (`mpv_render_gl.h`). */
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct mpv_opengl_fbo {
@@ -52,14 +56,14 @@ pub struct mpv_opengl_fbo {
     pub internal_format: c_int,
 }
 
-/// Parámetro genérico de render.
+/** Generic render parameter. */
 #[repr(C)]
 pub struct mpv_render_param {
     pub type_: c_int,
     pub data: *mut c_void,
 }
 
-/// Se llama cuando hay un frame nuevo que dibujar.
+/** Called when there is a new frame to draw. */
 #[allow(non_camel_case_types)]
 pub type mpv_render_update_fn = Option<unsafe extern "C" fn(cb_ctx: *mut c_void)>;
 
@@ -81,17 +85,21 @@ extern "C" {
         callback: mpv_render_update_fn,
         callback_ctx: *mut c_void,
     );
-    /// Pide a mpv el estado pendiente de render (bits de `MPV_RENDER_UPDATE_*`).
-    /// Debe llamarse al recibir el update callback, y es obligatorio cuando
-    /// `ADVANCED_CONTROL` está activo; de lo contrario el VO se traba.
+    /**
+     * Asks mpv for the pending render state (`MPV_RENDER_UPDATE_*` bits).
+     * Must be called upon receiving the update callback, and is mandatory when
+     * `ADVANCED_CONTROL` is active; otherwise the VO gets stuck.
+     */
     pub fn mpv_render_context_update(ctx: mpv_render_context_handle) -> u64;
-    /// Opcional; notifica a mpv que la cadena de presentación avanzó (vsync).
+    /** Optional; notifies mpv that the presentation chain advanced (vsync). */
     pub fn mpv_render_context_report_swap(ctx: mpv_render_context_handle);
     pub fn mpv_render_context_free(ctx: mpv_render_context_handle);
 }
 
-/// Llama `glGetIntegerv` (resuelta vía el loader GL) para leer el framebuffer
-/// actualmente enlazado por GTK/GLArea.
+/**
+ * Calls `glGetIntegerv` (resolved via the GL loader) to read the framebuffer
+ * currently bound by GTK/GLArea.
+ */
 pub unsafe fn gl_get_framebuffer_binding() -> c_int {
     let mut fbo: c_int = 0;
     unsafe {
@@ -108,22 +116,26 @@ pub unsafe fn gl_get_framebuffer_binding() -> c_int {
 #[link(name = "EGL")]
 #[link(name = "GL")]
 extern "C" {
-    /// Resuelve funciones de extensión y estándar desde el driver EGL.
+    /** Resolves extension and standard functions from the EGL driver. */
     pub fn eglGetProcAddress(name: *const c_char) -> *mut c_void;
-    /// Resuelve funciones estándar/extensiones desde `libGL` (GLX loader).
+    /** Resolves standard functions/extensions from `libGL` (GLX loader). */
     pub fn glXGetProcAddressARB(name: *const c_char) -> *mut c_void;
 }
 
-/// `mpv_format` usado para leer/escribir propiedades en punto flotante.
-///
-/// Coincide con `mpv_format` de libmpv: `MPV_FORMAT_DOUBLE = 5`
-/// (`MPV_FORMAT_INT64 = 4` es un valor distinto; usarlo aquí leía la propiedad
-/// como entero y devolvía basura al reinterpretarla como `f64`).
+/**
+ * `mpv_format` used for reading/writing floating-point properties.
+ *
+ * Matches libmpv's `mpv_format`: `MPV_FORMAT_DOUBLE = 5`
+ * (`MPV_FORMAT_INT64 = 4` is a different value; using it here would read the
+ * property as an integer and return garbage when reinterpreted as `f64`).
+ */
 pub const MPV_FORMAT_DOUBLE: c_int = 5;
 
 extern "C" {
-    /// Lee una propiedad en formato double (`MPV_FORMAT_DOUBLE`). Devuelve
-    /// `>= 0` en éxito. Seguro para lectura desde cualquier hilo.
+    /**
+     * Reads a property in double format (`MPV_FORMAT_DOUBLE`). Returns
+     * `>= 0` on success. Safe to read from any thread.
+     */
     pub fn mpv_get_property(
         ctx: super::ffi::mpv_handle,
         name: *const c_char,
@@ -132,13 +144,16 @@ extern "C" {
     ) -> c_int;
 }
 
-/// Resuelve el puntero de una función OpenGL para el callback que pide libmpv
-/// (`mpv_opengl_init_params.get_proc_address`).
-///
-/// GTK4 no expone un lookup por nombre (eliminó `gdk_gl_context_get_proc_address`
-/// de GTK3). En Wayland GTK4 usa un contexto EGL, así que se resuelve primero
-/// con `eglGetProcAddress` y, si devuelve NULL, con `glXGetProcAddressARB`
-/// (los dos exportados por `libEGL`/`libGL`).
+/**
+ * Resolves an OpenGL function pointer for the callback required by libmpv
+ * (`mpv_opengl_init_params.get_proc_address`).
+ *
+ * GTK4 does not expose a name-based lookup (it removed
+ * `gdk_gl_context_get_proc_address` from GTK3). On Wayland GTK4 uses an EGL
+ * context, so resolution first tries `eglGetProcAddress` and, if it returns
+ * NULL, falls back to `glXGetProcAddressARB` (both exported by
+ * `libEGL`/`libGL`).
+ */
 pub unsafe fn resolve_gl_proc(name: *const c_char) -> *mut c_void {
     let mut ptr = eglGetProcAddress(name);
     if ptr.is_null() {
@@ -158,8 +173,10 @@ mod tests {
         unsafe { resolve_gl_proc(c.as_ptr() as *const c_char) }
     }
 
-    /// El resolver debe devolver punteros válidos para funciones GL estándar
-    /// que libmpv consulta al crear el render context OpenGL.
+    /**
+     * The resolver must return valid pointers for standard GL functions
+     * that libmpv queries when creating the OpenGL render context.
+     */
     #[test]
     fn resuelve_funciones_gl_estandar() {
         for name in ["glClear", "glGetString", "glTexImage2D", "glCreateShader"] {

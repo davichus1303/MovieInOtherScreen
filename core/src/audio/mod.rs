@@ -1,8 +1,8 @@
-//! Selección de dispositivo de audio (lógica de dominio pura).
+/*! Audio device selection (pure domain logic). */
 
 use std::sync::mpsc::Sender;
 
-/// Dispositivo de salida de audio.
+/** Audio output device. */
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioDevice {
     id: String,
@@ -30,7 +30,7 @@ impl AudioDevice {
     }
 }
 
-/// Conjunto de dispositivos de audio detectados.
+/** Set of detected audio devices. */
 #[derive(Debug, Default)]
 pub struct AudioDevices {
     devices: Vec<AudioDevice>,
@@ -112,7 +112,7 @@ impl AudioDevices {
     }
 }
 
-/// Comandos para el selector de audio (UI → Domain).
+/** Commands for the audio selector (UI → Domain). */
 #[derive(Debug, Clone)]
 pub enum AudioCmd {
     Refresh,
@@ -120,7 +120,7 @@ pub enum AudioCmd {
     SetPreferred(String),
 }
 
-/// Eventos del selector de audio (Domain → UI).
+/** Events from the audio selector (Domain → UI). */
 #[derive(Debug, Clone)]
 pub enum AudioEvent {
     DevicesUpdated(Vec<AudioDevice>),
@@ -128,12 +128,12 @@ pub enum AudioEvent {
     Error(String),
 }
 
-/// Trait para la detección de dispositivos (inyectable para testing).
+/** Trait for device detection (injectable for testing). */
 pub trait AudioDetector: Send + Sync {
     fn detect(&self) -> Vec<AudioDevice>;
 }
 
-/// Selector de audio puro (sin UI).
+/** Pure audio selector (no UI). */
 pub struct AudioSelector {
     devices: AudioDevices,
     detector: Box<dyn AudioDetector>,

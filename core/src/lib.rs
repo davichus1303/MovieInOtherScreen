@@ -1,9 +1,10 @@
-//! Lógica de dominio de la aplicación, en Rust puro y sin dependencias de GTK.
-//!
-//! Esta es la capa "núcleo" del principio arquitectónico: separa las reglas de
-//! negocio (navegación, selección de monitores, selección de audio, control de
-//! reproducción, persistencia) de la UI y de los backends concretos. Al no
-//! depender de GTK, se puede probar de forma aislada y rápida con `cargo test`.
+/*! Application domain logic, in pure Rust with no GTK dependencies.
+ *
+ * This is the "core" layer of the architectural principle: it separates business
+ * rules (navigation, monitor selection, audio selection, playback control,
+ * persistence) from the UI and concrete backends. By not depending on GTK, it
+ * can be tested in isolation and quickly with `cargo test`.
+ */
 
 pub mod audio;
 pub mod config;

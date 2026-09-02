@@ -1,30 +1,31 @@
-//! Lógica de control de reproducción, independiente del backend concreto.
-//!
-//! Esta capa decide *qué* hacer (play, pause, stop, seek, siguiente, anterior,
-//! inicio) y calcula a qué vídeo/s posiciones se refieren. La ejecución real
-//! sobre libmpv está en la capa de reproductor que consume estos comandos.
+/*! Playback control logic, independent of the concrete backend.
+ *
+ * This layer decides *what* to do (play, pause, stop, seek, next, previous,
+ * home) and calculates which video(s) and positions they refer to. The actual
+ * execution on libmpv is in the player layer that consumes these commands.
+ */
 
-/// Comandos que el reproductor puede ejecutar.
+/** Commands that the player can execute. */
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     Play,
     Pause,
     Stop,
-    /// Lleva el vídeo actual al inicio, sin cambiar de vídeo.
+    /** Returns the current video to the beginning without changing video. */
     Home,
-    /// Busca a una posición normalizada [0.0, 1.0] del vídeo actual.
+    /** Seeks to a normalized position [0.0, 1.0] of the current video. */
     Seek(f64),
-    /// Busca a un segmento concreto (tecla/clic).
+    /** Seeks to a specific segment (key/click). */
     SeekSegment {
         segment: u32,
     },
-    /// Cambia el vídeo actual al siguiente de la secuencia.
+    /** Changes the current video to the next one in the sequence. */
     Next,
-    /// Cambia el vídeo actual al anterior de la secuencia.
+    /** Changes the current video to the previous one in the sequence. */
     Previous,
 }
 
-/// Estado de reproducción del vídeo actual.
+/** Playback state of the current video. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlayState {
     #[default]
@@ -33,24 +34,26 @@ pub enum PlayState {
     Paused,
 }
 
-/// Resultado de la última operación de navegación a nivel de reproductor.
+/** Result of the last navigation operation at the player level. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackNav {
-    /// Se sigue en el mismo vídeo.
+    /** Still on the same video. */
     Same,
-    /// Se pasó a un vídeo distinto (requiere transición).
+    /** Moved to a different video (transition required). */
     Changed,
-    /// Se intentó moverse pero no se pudo (extremo de la lista).
+    /** Attempted to move but could not (end of the list). */
     Impossible,
 }
 
-/// Intérprete de comandos sobre la lista de vídeos.
-///
-/// Mantiene qué vídeo está cargado y delega la navegación de la secuencia a
-/// `VideoList`. No ejecuta audio/video: solo produce decisiones.
+/**
+ * Command interpreter over the video list.
+ *
+ * Keeps track of which video is loaded and delegates sequence navigation to
+ * `VideoList`. It does not execute audio/video: it only produces decisions.
+ */
 #[derive(Debug, Clone, Default)]
 pub struct PlaybackController {
-    /// El vídeo cargado para reproducir.
+    /** The video loaded for playback. */
     current: Option<usize>,
     play_state: PlayState,
 }
@@ -68,7 +71,7 @@ impl PlaybackController {
         self.play_state
     }
 
-    /// Registra un cambio de vídeo externo (selección desde la lista).
+    /** Records an external video change (selection from the list). */
     pub fn handoff(&mut self, index: usize, play_state: PlayState) {
         self.current = Some(index);
         self.play_state = play_state;
@@ -79,7 +82,7 @@ impl PlaybackController {
         self.play_state = PlayState::Stopped;
     }
 
-    /// Aplica un comando contra la lista dando la decisión resultante.
+    /** Applies a command against the list, returning the resulting decision. */
     pub fn apply(&mut self, cmd: Command, list: &VideoListRef) -> PlaybackNav {
         match cmd {
             Command::Play => {
@@ -124,10 +127,12 @@ impl PlaybackController {
     }
 }
 
-/// Referencia estrecha a lo que el controlador necesita de la lista.
-///
-/// Evita depender de toda la estructura `VideoList`, manteniendo el bajo
-/// acoplamiento y la testabilidad.
+/**
+ * Narrow reference to what the controller needs from the list.
+ *
+ * Avoids depending on the entire `VideoList` structure, keeping coupling low
+ * and testability high.
+ */
 #[derive(Debug, Clone, Copy)]
 pub struct VideoListRef {
     len: usize,

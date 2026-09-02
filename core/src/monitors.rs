@@ -1,24 +1,24 @@
-//! Modelo lógico de monitores: detección y selección de destinos.
-//!
-//! La detección real (GDK/Wayland) ocurre en la capa de plataforma; esta
-//! capa mantiene el estado y las reglas de selección, y es probable de forma
-//! aislada.
+/*! Logical monitor model: detection and destination selection.
+ *
+ * Actual detection (GDK/Wayland) happens in the platform layer; this
+ * layer maintains state and selection rules, and is testable in isolation.
+ */
 
-/// Tipo de monitor.
+/** Monitor type. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorKind {
-    /// Monitor principal (donde vive la interfaz).
+    /** Primary monitor (where the interface lives). */
     Primary,
-    /// Monitor adicional, posible destino de reproducción.
+    /** Additional monitor, possible playback destination. */
     Secondary,
 }
 
-/// Un monitor detectado.
+/** A detected monitor. */
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Monitor {
-    /// Identificador estable del monitor (p. ej. `eDP-1`).
+    /** Stable monitor identifier (e.g. `eDP-1`). */
     id: String,
-    /// Nombre de presentación (p. ej. "Monitor 2").
+    /** Display name (e.g. "Monitor 2"). */
     label: String,
     kind: MonitorKind,
     selected: bool,
@@ -55,15 +55,15 @@ impl Monitor {
     }
 }
 
-/// Una regla de negocio: solo los monitores adicionales pueden ser destinos.
+/** A business rule: only additional monitors can be destinations. */
 impl Monitor {
-    /// Determina si este monitor puede seleccionarse como destino.
+    /** Determines whether this monitor can be selected as a destination. */
     pub fn can_be_target(&self) -> bool {
         !self.is_primary()
     }
 }
 
-/// Conjunto de monitores detectados en el sistema.
+/** Set of monitors detected on the system. */
 #[derive(Debug, Clone, Default)]
 pub struct MonitorSet {
     monitors: Vec<Monitor>,
@@ -86,10 +86,12 @@ impl MonitorSet {
         self.monitors.is_empty()
     }
 
-    /// Reemplaza el conjunto con el estado detectado por la plataforma.
-    ///
-    /// La selección previa se conserva solo para los monitores que siguen
-    /// conectados; los desconectados se descartan.
+    /**
+     * Replaces the set with the platform-detected state.
+     *
+     * Previous selection is preserved only for monitors that are still
+     * connected; disconnected ones are discarded.
+     */
     pub fn update_from_detected(&mut self, detected: Vec<Monitor>) {
         let was_selected: std::collections::HashSet<String> = self
             .monitors
@@ -109,24 +111,26 @@ impl MonitorSet {
             .collect();
     }
 
-    /// Monitores adicionales (posibles destinos), en orden de detección.
+    /** Additional monitors (possible destinations), in detection order. */
     pub fn secondaries(&self) -> impl Iterator<Item = &Monitor> {
         self.monitors.iter().filter(|m| m.is_secondary_for_target())
     }
 
-    /// Monitores adicionales actualmente seleccionados.
+    /** Currently selected additional monitors. */
     pub fn selected(&self) -> impl Iterator<Item = &Monitor> {
         self.monitors.iter().filter(|m| m.is_selected())
     }
 
-    /// Número de monitores adicionales seleccionados.
+    /** Number of selected additional monitors. */
     pub fn selected_count(&self) -> usize {
         self.selected().count()
     }
 
-    /// Conmuta la selección de un monitor adicional.
-    ///
-    /// Devuelve `false` si el monitor no existe o es el principal.
+    /**
+     * Toggles the selection of an additional monitor.
+     *
+     * Returns `false` if the monitor does not exist or is the primary one.
+     */
     pub fn toggle(&mut self, id: &str) -> bool {
         let Some(m) = self.monitors.iter_mut().find(|m| m.id() == id) else {
             return false;
@@ -142,13 +146,12 @@ impl MonitorSet {
         self.monitors.iter().find(|m| m.id() == id)
     }
 
-    /// Compara si el conjunto tiene algún monitor adicional (hubo monitores
-    /// además del principal).
+    /** Checks whether the set has any additional monitors (beyond the primary). */
     pub fn has_secondaries(&self) -> bool {
         self.monitors.iter().any(|m| m.is_secondary_for_target())
     }
 
-    /// Compara si no hay ningún monitor adicional (solo el principal).
+    /** Checks whether there are no additional monitors (only the primary). */
     pub fn only_primary(&self) -> bool {
         !self.has_secondaries()
     }

@@ -1,4 +1,4 @@
-//! Área de reproducción principal: vídeo embebido + controles + timeline.
+/*! Main playback area: embedded video + controls + timeline. */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -8,7 +8,7 @@ use gtk::prelude::*;
 
 use crate::player::PlayerCommand;
 
-/// Estado del timeline (barra de progreso + etiquetas de tiempo).
+/** Timeline state (progress bar + time labels). */
 #[derive(Debug)]
 pub struct Timeline {
     duration: f64,
@@ -66,8 +66,10 @@ impl Timeline {
         Some((value / 100.0) * self.duration)
     }
 
-    /// Conecta la barra de progreso: al clicar/arrastrar salta al punto en el
-    /// reproductor principal y en los espejos.
+    /**
+     * Connects the progress bar: clicking/dragging seeks to the point in the
+     * main player and in the mirrors.
+     */
     pub fn connect_seek(
         self_rc: &Rc<RefCell<Self>>,
         player: std::sync::mpsc::Sender<crate::player::PlayerCommand>,
@@ -90,7 +92,7 @@ impl Timeline {
     }
 }
 
-/// Formatea una duración en segundos como `mm:ss` (o `hh:mm:ss` cuando aplica).
+/** Formats a duration in seconds as `mm:ss` (or `hh:mm:ss` when applicable). */
 pub fn fmt_time(secs: f64) -> String {
     if !secs.is_finite() || secs < 0.0 {
         return "00:00".to_string();
@@ -106,8 +108,10 @@ pub fn fmt_time(secs: f64) -> String {
     }
 }
 
-/// Construye la fila de controles (botones) y sincroniza los espejos con el
-/// reproductor principal al pulsarlos.
+/**
+ * Builds the controls row (buttons) and synchronizes the mirrors with the
+ * main player when they are pressed.
+ */
 pub fn build_controls(
     player: &std::sync::mpsc::Sender<crate::player::PlayerCommand>,
     mirror: std::rc::Rc<std::cell::RefCell<crate::mirror::MirrorController>>,
