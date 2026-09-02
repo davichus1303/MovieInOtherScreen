@@ -110,6 +110,12 @@ impl VideoList {
         self.selected = None;
     }
 
+    /// Elimina todos los vídeos de la lista y la selección.
+    pub fn clear(&mut self) {
+        self.videos.clear();
+        self.selected = None;
+    }
+
     /// Avanza a la siguiente posición de la secuencia.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Navigate {

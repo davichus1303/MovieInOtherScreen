@@ -38,21 +38,21 @@ pub fn build_sidebar(deps: SidebarDeps) -> gtk::Box {
     videos_header.set_halign(gtk::Align::Start);
     sidebar.append(&videos_header);
 
+    let buttons_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    buttons_row.set_halign(gtk::Align::Start);
+
     let add_button = gtk::Button::with_label("＋ Agregar videos");
-    add_button.set_halign(gtk::Align::Start);
-    sidebar.append(&add_button);
+    buttons_row.append(&add_button);
+
+    let clear_button = gtk::Button::with_label("Limpiar");
+    buttons_row.append(&clear_button);
+
+    sidebar.append(&buttons_row);
 
     let list = gtk::ListBox::new();
     list.set_vexpand(true);
     list.set_selection_mode(gtk::SelectionMode::Single);
     sidebar.append(&list);
-
-    let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    sidebar.append(&separator);
-
-    let clear_button = gtk::Button::with_label("Limpiar selección");
-    clear_button.set_halign(gtk::Align::Start);
-    sidebar.append(&clear_button);
 
     // Conexiones de la lista de videos
     connect_video_list(&list, &add_button, &clear_button, &deps);
@@ -93,6 +93,8 @@ fn connect_video_list(
     // --- For clear_button closure ---
     let videos_for_clear = videos.clone();
     let list_for_clear = list_clone.clone();
+    let player_for_clear = player.clone();
+    let mirror_for_clear = mirror.clone();
 
     // --- add_button closure ---
     add_button.connect_clicked(move |btn| {
@@ -170,10 +172,16 @@ fn connect_video_list(
 
     // --- clear_button closure ---
     let videos_for_clear_closure = videos_for_clear.clone();
-    let list_for_clear = list_clone.clone();
     clear_button.connect_clicked(move |_| {
-        videos_for_clear_closure.borrow_mut().clear_selection();
-        list_for_clear.unselect_all();
+        // Vacía la lista de vídeos y refresca las filas de la UI.
+        let value = videos_for_clear_closure.clone();
+        value.borrow_mut().clear();
+        rebuild_list(&list_for_clear, &value);
+        // Descarga por completo el vídeo del reproductor original (deja la
+        // GLArea sin archivo cargado, por lo que ya no se puede reproducir).
+        let _ = player_for_clear.send(PlayerCommand::Unload);
+        // Detiene (cierra) todas las ventanas espejo y reinicia su estado.
+        mirror_for_clear.borrow_mut().reset();
     });
 
     rebuild_list(&list_clone, &videos_for_clear);

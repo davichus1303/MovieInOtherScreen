@@ -120,6 +120,7 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
             Ok(PlayerCommand::Play) => player.play(),
             Ok(PlayerCommand::Pause) => player.pause(),
             Ok(PlayerCommand::Stop) => player.stop(),
+            Ok(PlayerCommand::Unload) => player.unload(),
             Ok(PlayerCommand::Seek(seconds)) => player.seek(seconds),
             Ok(PlayerCommand::TogglePause) => player.toggle_pause(),
             Ok(PlayerCommand::Shutdown) => break,
@@ -222,6 +223,16 @@ impl MpvSession {
     fn stop(&mut self) {
         let _ = self.handler.set_property("pause", true);
         let _ = self.handler.command(&["seek", "0", "absolute"]);
+        self.set_paused(true);
+    }
+
+    /// Descarga por completo el vídeo actual, dejando el reproductor sin
+    /// archivo: la GLArea queda vacía y ya no se puede volver a reproducir
+    /// nada hasta cargar otro vídeo.
+    fn unload(&mut self) {
+        let _ = self.handler.set_property("pause", true);
+        // Cargar una ruta vacía desvincula el archivo actual del core de mpv.
+        let _ = self.handler.command(&["loadfile", ""]);
         self.set_paused(true);
     }
 

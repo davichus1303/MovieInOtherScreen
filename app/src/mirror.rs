@@ -335,6 +335,15 @@ impl MirrorController {
         }
     }
 
+    /// Reinicia por completo el estado: cierra todos los espejos y olvida el
+    /// vídeo actual, de modo que `is_idle()` vuelva a ser `true` y no se
+    /// vuelvan a abrir espejos al reconciliar con una lista ya vacía.
+    pub fn reset(&mut self) {
+        self.clear();
+        self.current_path = None;
+        self.loaded_path = None;
+    }
+
     /// Resuelve el `gdk::Monitor` real a partir del id lógico `gdk-{i}`.
     fn resolve_monitor(&self, id: &str) -> Option<gtk::gdk::Monitor> {
         let idx = id.strip_prefix("gdk-")?.parse::<usize>().ok()?;
