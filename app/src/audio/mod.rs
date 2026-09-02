@@ -1,4 +1,4 @@
-//! Selector de dispositivo de audio (PipeWire / PulseAudio) - UI layer.
+/*! Audio device selector (PipeWire / PulseAudio) - UI layer. */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +11,7 @@ use crate::mirror::MirrorController;
 use crate::player::PlayerCommand;
 use mos_core::audio::{AudioDevice, AudioDevices};
 
-/// Estado necesario para la sección de audio.
+/** State needed for the audio section. */
 pub struct AudioDeps {
     pub player: std::sync::mpsc::Sender<PlayerCommand>,
     pub mirror: Rc<RefCell<MirrorController>>,

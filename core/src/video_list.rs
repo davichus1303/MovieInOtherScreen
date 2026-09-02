@@ -1,12 +1,15 @@
-//! Modelo de vídeos y su lista.
-//!
-//! Esta capa es Rust puro, sin dependencias de GTK, para poder ser probada
-//! de forma aislada con `cargo test`.
+/*! Video model and its list.
+ *
+ * This layer is pure Rust, with no GTK dependencies, so it can be tested
+ * in isolation with `cargo test`.
+ */
 
 use std::path::PathBuf;
 
-/// Un vídeo de la lista. Solo almacena metadatos mínimos: la lista vive en la
-/// UI, la reproducción en el reproductor. Aquí no hay lógica de reproducción.
+/**
+ * A video in the list. Only stores minimal metadata: the list lives in the
+ * UI, playback lives in the player. There is no playback logic here.
+ */
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Video {
     path: PathBuf,
@@ -31,22 +34,24 @@ impl Video {
     }
 }
 
-/// Colección ordenada de vídeos agregada por el usuario.
-///
-/// Expone exclusivamente la navegación (secuencia) y la selección actual.
-/// No sabe nada de reproducción ni de la UI.
+/**
+ * Ordered collection of videos aggregated by the user.
+ *
+ * Exposes only navigation (sequence) and current selection.
+ * It knows nothing about playback or the UI.
+ */
 #[derive(Debug, Clone)]
 pub struct VideoList {
     videos: Vec<Video>,
     selected: Option<usize>,
 }
 
-/// Resultado de intentar mover la selección.
+/** Result of attempting to move the selection. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Navigate {
-    /// La selección se movió.
+    /** The selection moved. */
     Moved,
-    /// No se pudo mover porque ya estamos en el extremo de la lista.
+    /** Could not move because we are already at the end of the list. */
     Stuck,
 }
 
@@ -72,12 +77,12 @@ impl VideoList {
         self.videos.is_empty()
     }
 
-    /// Índice seleccionado actual, si existe.
+    /** Current selected index, if any. */
     pub fn selected_index(&self) -> Option<usize> {
         self.selected
     }
 
-    /// El vídeo seleccionado, si existe.
+    /** The selected video, if any. */
     pub fn selected(&self) -> Option<&Video> {
         self.selected.and_then(|i| self.videos.get(i))
     }
@@ -90,12 +95,12 @@ impl VideoList {
         self.videos.get(index)
     }
 
-    /// Agrega los vídeos al final, conservando cualquier selección previa.
+    /** Appends videos to the end, preserving any previous selection. */
     pub fn add(&mut self, videos: Vec<Video>) {
         self.videos.extend(videos);
     }
 
-    /// Selecciona el vídeo en `index`. Devuelve `false` si el índice no existe.
+    /** Selects the video at `index`. Returns `false` if the index does not exist. */
     pub fn select(&mut self, index: usize) -> bool {
         if index < self.videos.len() {
             self.selected = Some(index);
@@ -105,18 +110,18 @@ impl VideoList {
         }
     }
 
-    /// Vacía la selección actual sin borrar los vídeos de la lista.
+    /** Clears the current selection without removing videos from the list. */
     pub fn clear_selection(&mut self) {
         self.selected = None;
     }
 
-    /// Elimina todos los vídeos de la lista y la selección.
+    /** Removes all videos from the list and the selection. */
     pub fn clear(&mut self) {
         self.videos.clear();
         self.selected = None;
     }
 
-    /// Avanza a la siguiente posición de la secuencia.
+    /** Advances to the next position in the sequence. */
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Navigate {
         match self.selected {
@@ -134,7 +139,7 @@ impl VideoList {
         }
     }
 
-    /// Retrocede a la posición anterior de la secuencia.
+    /** Goes back to the previous position in the sequence. */
     pub fn previous(&mut self) -> Navigate {
         match self.selected {
             Some(i) if i > 0 => {

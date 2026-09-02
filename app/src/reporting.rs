@@ -1,14 +1,16 @@
-//! Registro y notificación de errores de la aplicación.
-//!
-//! Provee una única puerta por la que todos los errores/fallos del programa
-//! llegan a la interfaz (toast) y a los logs. Centraliza el mapeo entre un
-//! error interno y un mensaje legible para el usuario, de modo que las
-//! funciones que detectan un fallo no tengan que decidir cómo mostrarlo o
-//! loguearlo: solo llaman a [`report`].
-//!
-//! Los mensajes viajan al hilo principal de GTK a través de un canal global;
-//! la UI registra un receptor (véase [`attach`]) que los muestra como toasts
-//! emergentes (libadwaita) y, en paralelo, todo se escribe en los logs.
+/*
+ * Logging and notification of application errors.
+ *
+ * Provides a single door through which all errors/failures of the program
+ * reach the interface (toast) and the logs. It centralizes the mapping between
+ * an internal error and a readable message for the user, so functions that
+ * detect a failure do not have to decide how to display or log it: they only
+ * call [`report`].
+ *
+ * Messages travel to the main GTK thread through a global channel; the UI
+ * registers a receiver (see [`attach`]) that shows them as popup toasts
+ * (libadwaita) and, in parallel, everything is written to the logs.
+ */
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::OnceLock;
@@ -20,25 +22,25 @@ use libadwaita as adw;
 
 use crate::logging;
 
-/// Categorías de error conocidas de la aplicación.
+/** Known error categories of the application. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
-    /// Fallo al crear/cerrar un espejo de monitor.
+    /** Failure creating/closing a monitor mirror. */
     Mirror,
-    /// Error del motor de reproducción mpv.
+    /** Error from the mpv playback engine. */
     Player,
-    /// Fallo al cargar/abrir un archivo de vídeo.
+    /** Failure loading/opening a video file. */
     Video,
-    /// Fallo al detectar o seleccionar monitores.
+    /** Failure detecting or selecting monitors. */
     Monitors,
-    /// Error de audio.
+    /** Audio error. */
     Audio,
-    /// Error interno/inesperado sin clasificar.
+    /** Internal/unexpected unclassified error. */
     Internal,
 }
 
 impl ErrorKind {
-    /// Mensaje legible en castellano, mostrado al usuario en el toast.
+    /** Readable message shown to the user in the toast. */
     fn user_message(self, detail: &str) -> String {
         let base = match self {
             ErrorKind::Mirror => "Error con un monitor espejo".to_string(),
@@ -55,7 +57,7 @@ impl ErrorKind {
         }
     }
 
-    /// Etiqueta de categoría para el log.
+    /** Category tag for the log. */
     fn tag(self) -> &'static str {
         match self {
             ErrorKind::Mirror => "monitor",
@@ -68,20 +70,22 @@ impl ErrorKind {
     }
 }
 
-/// Una notificación de error lista para mostrarse en la interfaz.
+/** An error notification ready to be shown in the interface. */
 #[derive(Debug, Clone)]
 struct Report {
     kind: ErrorKind,
     detail: String,
 }
 
-/// Canal global por el que los errores llegan al hilo principal de la UI.
+/** Global channel through which errors reach the UI main thread. */
 static REPORT_TX: OnceLock<Sender<Report>> = OnceLock::new();
 
-/// Registra un error, lo escribe en los logs y notifica a la interfaz
-/// (toast emergente) para que el usuario lo vea.
-///
-/// Esta es la función que llaman todas las fuentes de error de la aplicación.
+/**
+ * Logs an error, writes it to the logs, and notifies the interface
+ * (popup toast) so the user can see it.
+ *
+ * This is the function called by all error sources in the application.
+ */
 pub fn report(kind: ErrorKind, detail: impl AsRef<str>) {
     let report = Report {
         kind,
@@ -111,10 +115,12 @@ pub fn report(kind: ErrorKind, detail: impl AsRef<str>) {
     }
 }
 
-/// Conecta el receptor global en un bucle de la UI y muestra cada error como
-/// toast sobre `overlay`. Se llama una vez al construir la ventana.
-///
-/// Devuelve el manejador de la fuente de timeout para mantenerla viva.
+/**
+ * Connects the global receiver in a UI loop and shows each error as a
+ * toast over `overlay`. Called once when building the window.
+ *
+ * Returns the handler of the timeout source to keep it alive.
+ */
 pub fn attach(overlay: &adw::ToastOverlay) -> glib::SourceId {
     let (tx, rx) = mpsc::channel::<Report>();
     // Si ya había un canal (no debería), lo ignoramos; usamos el primero.
@@ -124,8 +130,10 @@ pub fn attach(overlay: &adw::ToastOverlay) -> glib::SourceId {
     glib::idle_add_local(move || drain_reports(&rx, &overlay))
 }
 
-/// Recolecta los errores pendientes del canal y los muestra como toasts.
-/// Devuelve `Continue` para seguir escuchando mientras el canal esté vivo.
+/**
+ * Collects the pending errors from the channel and shows them as toasts.
+ * Returns `Continue` to keep listening while the channel is alive.
+ */
 fn drain_reports(rx: &Receiver<Report>, overlay: &adw::ToastOverlay) -> glib::ControlFlow {
     while let Ok(report) = rx.try_recv() {
         let msg = report.kind.user_message(&report.detail);

@@ -1,15 +1,16 @@
-//! Registro de actividad de la aplicación en un fichero de texto.
-//!
-//! Escribe entradas con marca de tiempo a un fichero bajo el directorio de
-//! datos XDG (`$XDG_DATA_HOME` o `~/.local/share`), lo que permite revisar
-//! después si la reproducción se inició correctamente y, en caso contrario,
-//! qué error impidió reproducir.
-//!
-//! La escritura está serializada con un `Mutex` global para poder usarla
-//! desde el hilo del motor mpv (que corre en paralelo a la UI) sin pisar
-//! entradas. Nunca provoca fallos de la aplicación: si el fichero no puede
-//! abrirse o escribirse, el error se ignora (el log es diagnóstico, no una
-//! parte crítica del flujo).
+/*
+ * Logging of application activity in a text file.
+ *
+ * Writes timestamped entries to a file under the XDG data directory
+ * (`$XDG_DATA_HOME` or `~/.local/share`), allowing later review of whether
+ * playback started correctly and, if not, which error prevented it.
+ *
+ * Writes are serialized with a global `Mutex` so they can be used from the
+ * mpv engine thread (which runs in parallel to the UI) without clobbering
+ * entries. It never causes application failures: if the file cannot be
+ * opened or written, the error is ignored (the log is diagnostic, not a
+ * critical part of the flow).
+ */
 
 use std::fs;
 use std::io::Write;
@@ -17,20 +18,20 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-/// Nombre del fichero de log dentro del directorio de datos.
+/** Name of the log file inside the data directory. */
 const LOG_FILE_NAME: &str = "movies-on-other-screens.log";
 
-/// Serializa las escrituras al fichero entre hilos.
+/** Serializes writes to the file between threads. */
 static LOG_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-/// Nivel de severidad de una entrada de log.
+/** Severity level of a log entry. */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
-    /// Información normal (p. ej. "reproducción iniciada").
+    /** Normal information (e.g. "playback started"). */
     Info,
-    /// Algo inesperado pero no fatal.
+    /** Something unexpected but not fatal. */
     Warning,
-    /// Un fallo que impide completar la acción solicitada.
+    /** A failure that prevents completing the requested action. */
     Error,
 }
 
@@ -44,9 +45,11 @@ impl Level {
     }
 }
 
-/// Ubicación del fichero de log en el sistema (directorio de datos XDG).
-///
-/// Prioriza `$XDG_DATA_HOME`; si no está definida, usa `~/.local/share`.
+/**
+ * Location of the log file on the system (XDG data directory).
+ *
+ * Prioritizes `$XDG_DATA_HOME`; if it is not defined, uses `~/.local/share`.
+ */
 pub fn log_file_path() -> PathBuf {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -58,10 +61,12 @@ pub fn log_file_path() -> PathBuf {
     base.join("movies-on-other-screens").join(LOG_FILE_NAME)
 }
 
-/// Escribe una entrada de log con nivel y mensaje dados.
-///
-/// Devuelve `false` si el fichero no se pudo abrir o escribir (diagnóstico),
-/// pero nunca falla la aplicación.
+/**
+ * Writes a log entry with the given level and message.
+ *
+ * Returns `false` if the file could not be opened or written (diagnostic),
+ * but never fails the application.
+ */
 pub fn log(level: Level, message: &str) -> bool {
     let lock = LOG_LOCK.get_or_init(|| Mutex::new(()));
     let _guard = match lock.lock() {
@@ -89,17 +94,17 @@ pub fn log(level: Level, message: &str) -> bool {
     }
 }
 
-/// Registra un mensaje informativo (estado de la reproducción).
+/** Logs an informational message (playback state). */
 pub fn info(message: impl AsRef<str>) -> bool {
     log(Level::Info, message.as_ref())
 }
 
-/// Registra una advertencia.
+/** Logs a warning. */
 pub fn warn(message: impl AsRef<str>) -> bool {
     log(Level::Warning, message.as_ref())
 }
 
-/// Registra un error.
+/** Logs an error. */
 pub fn error(message: impl AsRef<str>) -> bool {
     log(Level::Error, message.as_ref())
 }

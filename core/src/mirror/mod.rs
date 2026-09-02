@@ -1,17 +1,18 @@
-//! Motor de espejos: lógica pura para gestionar réplicas de reproducción.
-//!
-//! Esta capa NO depende de GTK. Define la lógica de negocio para:
-//! - Sincronizar monitores seleccionados con reproducción
-//! - Detectar cambios de video y propagarlos
-//! - Gestionar estado de espejos (abiertos, path cargado, posición)
+/*! Mirror engine: pure logic for managing playback replicas.
+ *
+ * This layer does NOT depend on GTK. It defines the business logic for:
+ * - Synchronizing selected monitors with playback
+ * - Detecting video changes and propagating them
+ * - Managing mirror state (open, loaded path, position)
+ */
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 
-/// Comandos que el motor de espejos entiende.
+/** Commands understood by the mirror engine. */
 #[derive(Debug, Clone)]
 pub enum MirrorCmd {
-    /// Carga un archivo (y salta a `pos` si es `Some`).
+    /** Loads a file (and seeks to `pos` if `Some`). */
     Load(String, Option<f64>),
     Play,
     Pause,
@@ -19,24 +20,24 @@ pub enum MirrorCmd {
     Shutdown,
 }
 
-/// Estado de una ventana de espejo individual.
+/** State of a single mirror window. */
 #[derive(Debug)]
 struct MirrorWindow {
     is_loaded: bool,
 }
 
-/// Estado interno del motor de espejos (lógica pura, sin GTK).
+/** Internal state of the mirror engine (pure logic, no GTK). */
 #[derive(Debug, Default)]
 pub struct MirrorEngine {
-    /// Path actualmente reproducido en el reproductor principal.
+    /** Path currently playing in the main player. */
     current_path: Option<String>,
-    /// Path que ya se cargó en los espejos abiertos.
+    /** Path already loaded in open mirrors. */
     loaded_path: Option<String>,
-    /// Monitores seleccionados actualmente (id -> Monitor).
+    /** Currently selected monitors (id -> Monitor). */
     selected_monitors: HashMap<String, crate::monitors::Monitor>,
-    /// Ventanas de espejo abiertas (id -> estado).
+    /** Open mirror windows (id -> state). */
     windows: HashMap<String, MirrorWindow>,
-    /// Sender hacia los hilos de espejos (inyección de dependencia).
+    /** Sender to the mirror threads (dependency injection). */
     cmd_tx: Option<Sender<MirrorCmd>>,
 }
 
@@ -45,12 +46,12 @@ impl MirrorEngine {
         Self::default()
     }
 
-    /// Inyecta el canal de comandos hacia los hilos de espejos.
+    /** Injects the command channel to the mirror threads. */
     pub fn set_command_sender(&mut self, tx: Sender<MirrorCmd>) {
         self.cmd_tx = Some(tx);
     }
 
-    /// Actualiza la selección de monitores.
+    /** Updates the monitor selection. */
     pub fn set_selected_monitors(&mut self, monitors: Vec<crate::monitors::Monitor>) {
         self.selected_monitors = monitors
             .into_iter()
@@ -58,14 +59,18 @@ impl MirrorEngine {
             .collect();
     }
 
-    /// Notifica que el reproductor principal va a reproducir `path`.
-    /// Actualiza `current_path` y recarga espejos si el video cambió.
+    /**
+     * Notifies that the main player is about to play `path`.
+     * Updates `current_path` and reloads mirrors if the video changed.
+     */
     pub fn set_playing(&mut self, path: String) {
         self.current_path = Some(path);
     }
 
-    /// Reconcilia espejos con la selección actual.
-    /// `pos_base`: posición (segundos) para alinear espejos nuevos.
+    /**
+     * Reconciles mirrors with the current selection.
+     * `pos_base`: position (seconds) to align new mirrors.
+     */
     pub fn reconfigure(&mut self, pos_base: Option<f64>) {
         let current_path = self.current_path.clone();
         let Some(path) = current_path else { return };
@@ -129,7 +134,7 @@ impl MirrorEngine {
     }
 }
 
-/// Trait para la UI: abstrae la creación/gestión de ventanas de espejo.
+/** Trait for the UI: abstracts the creation/management of mirror windows. */
 pub trait MirrorWindowManager {
     fn open_mirror(&mut self, id: &str, monitor: &crate::monitors::Monitor) -> Result<(), String>;
     fn close_mirror(&mut self, id: &str);

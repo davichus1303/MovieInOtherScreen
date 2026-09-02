@@ -1,12 +1,14 @@
-//! Capa de interfaz GTK4/libadwaita.
-//!
-//! Construye la ventana principal y conecta los widgets con la lógica de
-//! dominio (`mos_core`) y con el reproductor (`player`). Esta capa **no**
-//! contiene lógica de reproducción ni de negocio: interpreta comandos del
-//! usuario y refleja el estado.
-//!
-//! Nota de construcción: este módulo depende de GTK4/libadwaita y se compila
-//! dentro del SDK GNOME (Flatpak) o en el CI; la lógica de dominio no.
+/*
+ * GTK4/libadwaita interface layer.
+ *
+ * Builds the main window and connects the widgets with the domain logic
+ * (`mos_core`) and with the player (`player`). This layer **does not**
+ * contain playback or business logic: it interprets user commands and
+ * reflects state.
+ *
+ * Build note: this module depends on GTK4/libadwaita and is compiled
+ * inside the GNOME SDK (Flatpak) or in CI; the domain logic is not.
+ */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -26,18 +28,18 @@ use crate::player::{PlayerCommand, PlayerEvent};
 use crate::player_area::{self, Timeline};
 use crate::sidebar;
 
-/// Estado compartido por toda la interfaz.
+/** Shared state for the whole interface. */
 #[derive(Clone)]
 struct AppState {
-    /// Comandos hacia el hilo del reproductor.
+    /** Commands to the player thread. */
     player: std::sync::mpsc::Sender<PlayerCommand>,
-    /// Monitores detectados y su selección.
+    /** Detected monitors and their selection. */
     monitors: Rc<RefCell<MonitorSet>>,
-    /// Espejos de reproducción hacia los monitores seleccionados.
+    /** Playback mirrors to the selected monitors. */
     mirror: Rc<RefCell<mirror::MirrorController>>,
 }
 
-/// Puerto de entrada de la interfaz.
+/** Interface entry point. */
 pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWindow {
     let (cmd_tx, ev_rx) = crate::player::spawn_player();
 
@@ -86,7 +88,7 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     window
 }
 
-/// Layout principal: sidebar (30%) | área de reproducción (70%).
+/** Main layout: sidebar (30%) | playback area (70%). */
 fn build_layout(
     video_list: &Rc<RefCell<VideoList>>,
     state: &AppState,

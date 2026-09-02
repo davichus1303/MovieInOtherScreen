@@ -1,17 +1,19 @@
-//! Implementación concreta del motor de reproducción con libmpv.
-//!
-//! Este módulo encapsula toda la interacción con libmpv, aislando
-//! el resto de la aplicación de los detalles de la API C.
+/*
+ * Concrete implementation of the playback engine with libmpv.
+ *
+ * This module encapsulates all interaction with libmpv, isolating the rest of
+ * the application from the details of the C API.
+ */
 
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::thread;
 
 use mos_core::playback::{PlaybackCmd, PlaybackEvent, PlaybackState};
 
-/// Handle interno de mpv (opaco para el resto de la app).
+/** Internal mpv handle (opaque to the rest of the app). */
 type MpvHandle = *mut std::os::raw::c_void;
 
-/// Sesión de mpv que vive en su propio hilo.
+/** mpv session that lives on its own thread. */
 struct MpvSession {
     handler: mpv::MpvHandler,
     events: Sender<PlaybackEvent>,
@@ -192,7 +194,7 @@ impl MpvSession {
     }
 }
 
-/// Punto de entrada para el hilo del motor mpv.
+/** Entry point for the mpv engine thread. */
 fn run_mpv_engine(cmd_rx: Receiver<PlaybackCmd>, events: Sender<PlaybackEvent>) {
     let mut session = match MpvSession::new(&events) {
         Ok(s) => s,
@@ -204,7 +206,7 @@ fn run_mpv_engine(cmd_rx: Receiver<PlaybackCmd>, events: Sender<PlaybackEvent>) 
     session.run(cmd_rx);
 }
 
-/// Spawnea el hilo del motor mpv.
+/** Spawns the mpv engine thread. */
 pub fn spawn_mpv_engine(
     cmd_rx: Receiver<PlaybackCmd>,
     events: Sender<PlaybackEvent>,

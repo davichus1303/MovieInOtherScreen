@@ -1,19 +1,23 @@
-//! Segmentos de la barra de progreso y su mapeo desde teclado y clic.
+/*! Progress bar segments and their mapping from keyboard and click. */
 
-/// Número de segmentos en los que se divide conceptualmente la barra.
+/** Number of segments the bar is conceptually divided into. */
 pub const SEGMENT_COUNT: u32 = 10;
 
-/// Representa un segmento válido de la barra (del 1 al 10).
-///
-/// Se usa internamente para un mapeo inequívoco: el segmento 10 se alcanza
-/// con la tecla física `0`, nunca con una tecla inexistente "10".
+/**
+ * Represents a valid bar segment (from 1 to 10).
+ *
+ * Used internally for an unambiguous mapping: segment 10 is reached
+ * with the physical key `0`, never with a non-existent key "10".
+ */
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment(u32);
 
 impl Segment {
-    /// Posición normalizada [0.0, 1.0] en la que empieza este segmento.
-    ///
-    /// El segmento 1 comienza en 0.0, el 10 en 0.9.
+    /**
+     * Normalized position [0.0, 1.0] at which this segment starts.
+     *
+     * Segment 1 starts at 0.0, segment 10 at 0.9.
+     */
     pub fn position(&self) -> f64 {
         f64::from(self.0.saturating_sub(1)) / f64::from(SEGMENT_COUNT)
     }
@@ -22,10 +26,12 @@ impl Segment {
 impl TryFrom<u32> for Segment {
     type Error = SegmentError;
 
-    /// Construye un segmento a partir de un número de tecla física (1-9, y 0).
-    ///
-    /// La tecla `0` se interpreta como el segmento final (equivalente a 10),
-    /// eliminando la ambigüedad con la décima posición.
+    /**
+     * Builds a segment from a physical key number (1-9, and 0).
+     *
+     * The `0` key is interpreted as the final segment (equivalent to 10),
+     * eliminating ambiguity with the tenth position.
+     */
     fn try_from(physical_key: u32) -> Result<Self, Self::Error> {
         match physical_key {
             0 => Ok(Segment(SEGMENT_COUNT)),
@@ -35,9 +41,11 @@ impl TryFrom<u32> for Segment {
     }
 }
 
-/// Construye un segmento a partir de una proporción normalizada [0.0, 1.0].
-///
-/// Se usa para calcular el segmento correspondiente a un clic en la barra.
+/**
+ * Builds a segment from a normalized fraction [0.0, 1.0].
+ *
+ * Used to calculate the segment corresponding to a click on the bar.
+ */
 impl From<f64> for Segment {
     fn from(fraction: f64) -> Self {
         let f = fraction.clamp(0.0, 0.999_999);

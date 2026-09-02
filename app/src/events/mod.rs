@@ -1,4 +1,4 @@
-//! Puente de eventos entre el reproductor (hilo background) y la UI (hilo principal).
+/*! Event bridge between the player (background thread) and the UI (main thread). */
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -10,7 +10,7 @@ use crate::player::{PlayerCommand, PlayerEvent};
 use crate::mirror::MirrorController;
 use mos_core::monitors::MonitorSet;
 
-/// Conecta el receptor de eventos del reproductor al timeline de la UI.
+/** Connects the player event receiver to the UI timeline. */
 pub fn bridge_events_to_gtk(
     rx: std::sync::mpsc::Receiver<PlayerEvent>,
     timeline: Rc<RefCell<crate::player_area::Timeline>>,
@@ -31,7 +31,7 @@ pub fn bridge_events_to_gtk(
     });
 }
 
-/// Reproduce un vídeo en el reproductor principal y abre espejos en monitores seleccionados.
+/** Plays a video on the main player and opens mirrors on selected monitors. */
 pub fn mirror_on_play(state: &AppState, path: String) {
     state.mirror.borrow_mut().set_playing(path.clone());
     let selected: Vec<String> = state
@@ -45,7 +45,7 @@ pub fn mirror_on_play(state: &AppState, path: String) {
     mirror.control(crate::mirror::MirrorCmd::Play);
 }
 
-/// Reconcilla los espejos con la selección de monitores actual.
+/** Reconciles the mirrors with the current monitor selection. */
 pub fn mirror_reconcile(state: &AppState) {
     let has_playback = !state.mirror.borrow().is_idle();
     let pos = if has_playback {
@@ -62,12 +62,12 @@ pub fn mirror_reconcile(state: &AppState) {
     state.mirror.borrow_mut().reconfigure(&selected, pos);
 }
 
-/// Envía una orden de control a todos los espejos abiertos.
+/** Sends a control command to all open mirrors. */
 pub fn mirror_control(state: &AppState, cmd: crate::mirror::MirrorCmd) {
     state.mirror.borrow_mut().control(cmd);
 }
 
-/// Estado compartido por toda la interfaz (re-export para uso en eventos).
+/** Shared state for the whole interface (re-export for use in events). */
 #[derive(Clone)]
 pub struct AppState {
     pub player: std::sync::mpsc::Sender<crate::player::PlayerCommand>,

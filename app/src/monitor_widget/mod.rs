@@ -1,4 +1,4 @@
-//! Widgets para selección de monitores.
+/*! Widgets for monitor selection. */
 
 use gtk::prelude::*;
 
@@ -7,14 +7,14 @@ use crate::mirror::MirrorController;
 use crate::player::PlayerCommand;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 
-/// Estado necesario para construir widgets de monitores.
+/** State needed to build monitor widgets. */
 pub struct MonitorDeps {
     pub player: std::sync::mpsc::Sender<PlayerCommand>,
     pub mirror: std::rc::Rc<std::cell::RefCell<MirrorController>>,
     pub monitors: std::rc::Rc<std::cell::RefCell<MonitorSet>>,
 }
 
-/// Construye la sección completa de monitores (título + hint + fila).
+/** Builds the complete monitors section (title + hint + row). */
 pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     detect_monitors(&deps.monitors);
 
@@ -45,7 +45,7 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     section
 }
 
-/// Detecta los monitores del sistema (GDK) y actualiza el conjunto lógico.
+/** Detects the system monitors (GDK) and updates the logical set. */
 fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
     let mut found: Vec<(gtk::gdk::Rectangle, String)> = Vec::new();
     let display = match gtk::gdk::Display::default() {
@@ -94,7 +94,7 @@ fn detect_monitors(monitors: &std::rc::Rc<std::cell::RefCell<MonitorSet>>) {
     monitors.borrow_mut().update_from_detected(detected);
 }
 
-/// Fila horizontal con una tarjeta por monitor.
+/** Horizontal row with one card per monitor. */
 pub fn monitors_row(deps: &MonitorDeps) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.set_halign(gtk::Align::Start);
@@ -112,7 +112,7 @@ pub fn monitors_row(deps: &MonitorDeps) -> gtk::Box {
     row
 }
 
-/// Tarjeta seleccionable de un monitor.
+/** Selectable card for a monitor. */
 pub fn monitor_card(mon: &Monitor, deps: &MonitorDeps) -> gtk::ToggleButton {
     let kind = if mon.is_primary() {
         "Principal"

@@ -1,16 +1,18 @@
-//! Embebido de la salida de vídeo de mpv en un `gtk::GLArea`.
-//!
-//! En lugar de `--force-window` (ventana propia de mpv), el motor usa
-//! `vo=libmpv` y aquí se crea un `mpv_render_context` (render API OpenGL) y,
-//! mediante el señal `render` de `GtkGLArea`, se pinta cada frame en el
-//! widget. Es el mismo enfoque que usa Celluloid (el reproductor mpv de GNOME).
-//!
-//! Reglas de hilos (libmpv render.h):
-//! - El render context se crea en el hilo de la UI, con el GL context
-//!   "current" (GTK lo deja current al entrar en `render`).
-//! - `mpv_render_context_render` se llama solo desde el hilo de la UI.
-//! - El update callback lo invoca mpv desde el hilo del motor; aquí solo se
-//!   encola un `queue_draw` en el contexto principal de GLib.
+/*!
+ * Embedding mpv video output in a `gtk::GLArea`.
+ *
+ * Instead of `--force-window` (mpv's own window), the engine uses
+ * `vo=libmpv` and here an `mpv_render_context` (OpenGL render API) is created.
+ * Each frame is painted into the widget through the `render` signal of
+ * `GtkGLArea`. This is the same approach used by Celluloid (GNOME's mpv player).
+ *
+ * Thread rules (libmpv render.h):
+ * - The render context is created on the UI thread, with the GL context
+ *   "current" (GTK leaves it current when entering `render`).
+ * - `mpv_render_context_render` is called only from the UI thread.
+ * - The update callback is invoked by mpv from the engine thread; here it only
+ *   enqueues a `queue_draw` on the main GLib context.
+ */
 
 use std::cell::RefCell;
 use std::os::raw::{c_char, c_int, c_void};
@@ -25,33 +27,38 @@ use crate::logging;
 use crate::player::ffi::{self, mpv_opengl_fbo, mpv_opengl_init_params, mpv_render_param};
 use crate::player::mpv_engine::mpv_handle;
 
-/// Contador global de renders (para diagnóstico del video embebido).
+/** Global render counter (for embedded video diagnostics). */
 static RENDER_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// Contexto pasado al update callback de libmpv. Empaqueta el widget y su
-/// render context para que el callback (que corre en el hilo del motor) pueda,
-/// en el hilo principal, llamar a `mpv_render_context_update` sobre el render
-/// context correcto de **esta** instancia (cada ventana/espejo tiene el suyo).
-///
-/// El render context se guarda como `AtomicUsize` y NO como valor copiado:
-/// en `unrealize` se pone a `0` antes de liberarlo, de modo que cualquier
-/// update callback que llegue tarde (ya encolado en el bucle principal) lea
-/// `null` y no invoque `mpv_render_context_update` sobre memoria ya liberada
-/// (evita un use-after-free que hacía que la app crasheara al cerrar espejos).
+/**
+ * Context passed to the libmpv update callback. Wraps the widget and its
+ * render context so the callback (running on the engine thread) can call
+ * `mpv_render_context_update` on the correct render context of **this**
+ * instance (each window/mirror has its own) from the main thread.
+ *
+ * The render context is stored as `AtomicUsize` and NOT as a copied value:
+ * in `unrealize` it is set to `0` before being freed, so that any
+ * late-arriving update callback (already enqueued on the main loop) reads
+ * `null` and does not invoke `mpv_render_context_update` on already-freed
+ * memory (prevents a use-after-free that caused the app to crash when
+ * closing mirrors).
+ */
 struct MpvUpdateCtx {
-    /// La dirección del `GtkGLArea` (como `usize`, dato plano `Send`).
+    /** The `GtkGLArea` address (as `usize`, a plain `Send` value). */
     widget: usize,
-    /// El `mpv_render_context` de esta instancia (visto como dirección).
+    /** The `mpv_render_context` of this instance (viewed as an address). */
     render_ctx: AtomicUsize,
 }
 
-/// Callback (`mpv_render_context_set_update_callback`) que encola un repintado
-/// del GLArea en el hilo principal. mpv lo invoca desde su propio hilo.
-///
-/// Regla de libmpv: desde el callback **no** se puede llamar a ninguna otra
-/// función de mpv; por eso delegamos al hilo principal, donde sí hacemos
-/// `mpv_render_context_update` (obligatorio para que el VO no se trabe y para
-/// saber si hay frame nuevo) y encolamos el redibujado del GLArea.
+/**
+ * Callback (`mpv_render_context_set_update_callback`) that enqueues a
+ * repaint of the GLArea on the main thread. mpv invokes it from its own thread.
+ *
+ * libmpv rule: from the callback you **must not** call any other mpv
+ * function; that is why we delegate to the main thread, where we do call
+ * `mpv_render_context_update` (mandatory so the VO does not get stuck and to
+ * check if there is a new frame) and enqueue the GLArea redraw.
+ */
 unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
     // cb_ctx apunta al `MpvUpdateCtx` de esta instancia (leak intencionado,
     // no se libera en `unrealize` para que este callback pueda seguir
@@ -78,38 +85,44 @@ unsafe extern "C" fn on_mpv_update(cb_ctx: *mut c_void) {
     });
 }
 
-/// Estado mutable compartido entre el GLArea y los callbacks.
+/** Mutable state shared between the GLArea and the callbacks. */
 struct State {
     render_ctx: ffi::mpv_render_context_handle,
-    /// Puntero al `MpvUpdateCtx` de esta instancia (con `leak`; en `unrealize`
-    /// solo se anula su `render_ctx` atómico, no se libera la caja).
+    /**
+     * Pointer to this instance's `MpvUpdateCtx` (intentionally leaked; in
+     * `unrealize` only its atomic `render_ctx` is zeroed, the box is not freed).
+     */
     update_ctx: *mut MpvUpdateCtx,
-    /// Handle de mpv con el que crear el render context (per-instancia; en la
-    /// ventana principal se rellena con el handle global del motor).
+    /**
+     * mpv handle used to create the render context (per-instance; in the
+     * main window it is filled with the engine's global handle).
+     */
     handle: Option<ffi::mpv_handle>,
     last_w: i32,
     last_h: i32,
     last_scale: f64,
 }
 
-/// Proveedor GL requerido por `mpv_opengl_init_params.get_proc_address`.
-///
-/// GTK4 no expone `gdk_gl_context_get_proc_address` (eliminado respecto a
-/// GTK3); se resuelve vía `eglGetProcAddress` con fallback a
-/// `glXGetProcAddress`. El puntero del contexto GL no se usa en la resolución.
+/**
+ * GL provider required by `mpv_opengl_init_params.get_proc_address`.
+ *
+ * GTK4 does not expose `gdk_gl_context_get_proc_address` (removed compared to
+ * GTK3); it is resolved via `eglGetProcAddress` with fallback to
+ * `glXGetProcAddress`. The GL context pointer is not used for the resolution.
+ */
 unsafe extern "C" fn gl_get_proc_address(_gl_ctx: *mut c_void, name: *const c_char) -> *mut c_void {
     unsafe { ffi::resolve_gl_proc(name) }
 }
 
-/// Widget GLArea embechado con un `mpv_render_context`.
+/** GLArea widget embedded with an `mpv_render_context`. */
 pub struct EmbeddedVideo {
-    /// El GLArea bajo control (mantiene vivo el widget y su puntero).
+    /** The controlled GLArea (keeps the widget and its pointer alive). */
     gl_area: gtk::GLArea,
     state: Rc<RefCell<State>>,
 }
 
 impl EmbeddedVideo {
-    /// Construye el GLArea ya conectado para reproducir la salida de mpv.
+    /** Builds the GLArea already connected to play mpv output. */
     pub fn new() -> Self {
         let gl_area = gtk::GLArea::new();
         // Con auto_render (true) GTK deja el GL context "current" alrededor del
@@ -135,16 +148,18 @@ impl EmbeddedVideo {
         this
     }
 
-    /// Idéntico a [`EmbeddedVideo::new`], pero usa el handle de mpv dado
-    /// (un core propio, p. ej. los espejos de monitores) en lugar del handle
-    /// global del reproductor principal.
+    /**
+     * Identical to [`EmbeddedVideo::new`], but uses the given mpv handle
+     * (an independent core, e.g. monitor mirrors) instead of the main
+     * player's global handle.
+     */
     pub fn with_handle(handle: ffi::mpv_handle) -> Self {
         let this = Self::new();
         this.state.borrow_mut().handle = Some(handle);
         this
     }
 
-    /// Acceso al widget para colocarlo en la interfaz.
+    /** Access to the widget for placing it in the interface. */
     pub fn widget(&self) -> &gtk::GLArea {
         &self.gl_area
     }
@@ -267,7 +282,7 @@ impl EmbeddedVideo {
     }
 }
 
-/// Crea el `mpv_render_context` para el handle dado y el GL context de GDK.
+/** Creates the `mpv_render_context` for the given handle and GDK's GL context. */
 fn init_render_context(
     handle: ffi::mpv_handle,
     gl_ctx: *mut c_void,
@@ -307,11 +322,13 @@ fn init_render_context(
     res
 }
 
-/// Dibuja el frame actual de mpv en el framebuffer del GLArea.
-///
-/// El FBO se lee de `GL_FRAMEBUFFER_BINDING` (el que GTK/GLArea haya enlazado;
-/// puede no ser 0 en configuraciones con un framebuffer intermedio). `FLIP_Y`
-/// es obligatorio porque GTK tiene el origen Y arriba-izquierda.
+/**
+ * Draws the current mpv frame into the GLArea framebuffer.
+ *
+ * The FBO is read from `GL_FRAMEBUFFER_BINDING` (whichever GTK/GLArea has
+ * bound; it may not be 0 in configurations with an intermediate framebuffer).
+ * `FLIP_Y` is mandatory because GTK has its Y origin at the top-left.
+ */
 fn render_frame(ctx: ffi::mpv_render_context_handle, w: i32, h: i32) {
     // Debe ejecutarse con el GL context del GLArea ya "current".
     let fbo = unsafe { ffi::gl_get_framebuffer_binding() };

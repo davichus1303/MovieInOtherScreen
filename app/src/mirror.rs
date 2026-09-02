@@ -1,14 +1,16 @@
-//! Espejo de la reproducción hacia monitores adicionales.
-//!
-//! libmpv solo permite **un** `mpv_render_context` por core (render.h), por lo
-//! que no se puede duplicar la salida de un único núcleo a varias superficies.
-//! La estrategia (misma que usan Syncplay/mpvsync/mpvpaper) es: **un core de
-//! mpv por monitor seleccionado**, cada uno con su propio `mpv_render_context`
-//! embebido en un `GtkGLArea` de una ventana fullscreen, todos reproduciendo el
-//! MISMO archivo y sincronizados (pausa / seek) con el reproductor principal.
-//!
-//! La sincronización es por tiempo (no frame-perfect): todos arrancan a la vez,
-//! reproducen al mismo ritmo y siguen los saltos de posición del maestro.
+/*
+ * Mirror playback to additional monitors.
+ *
+ * libmpv only allows **one** `mpv_render_context` per core (render.h), so the
+ * output of a single core cannot be duplicated to multiple surfaces. The
+ * strategy (same as Syncplay/mpvsync/mpvpaper) is: **one mpv core per
+ * selected monitor**, each with its own `mpv_render_context` embedded in a
+ * `GtkGLArea` of a fullscreen window, all playing the SAME file and
+ * synchronized (pause / seek) with the main player.
+ *
+ * Synchronization is time-based (not frame-perfect): all start together,
+ * play at the same rate, and follow the position jumps of the master.
+ */
 
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
@@ -22,24 +24,26 @@ use crate::player::embed::EmbeddedVideo;
 use crate::player::ffi;
 use crate::reporting::{self, ErrorKind};
 
-/// Comandos que la UI envía al core sincronizado de un espejo.
+/** Commands the UI sends to a mirror's synchronized core. */
 #[derive(Debug, Clone, PartialEq)]
 pub enum MirrorCmd {
-    /// Carga el archivo (y busca a `pos` si es `Some`).
+    /** Loads the file (and seeks to `pos` if `Some`). */
     Load(String, Option<f64>),
     Play,
     Pause,
-    /// Salta a una posición (segundos).
+    /** Seeks to a position (seconds). */
     Seek(f64),
-    /// Termina el core.
+    /** Terminates the core. */
     Shutdown,
 }
 
-/// Núcleo de mpv de un espejo: vive en su propio hilo, sin audio
-/// (`audio=no`), con salida embebida (`vo=libmpv`).
+/**
+ * Mirror mpv core: lives on its own thread, without audio (`audio=no`),
+ * with embedded output (`vo=libmpv`).
+ */
 struct MirrorCore {
     tx: Sender<MirrorCmd>,
-    /// Handle crudo para crear el `mpv_render_context` en el hilo de la UI.
+    /** Raw handle for creating the `mpv_render_context` on the UI thread. */
     handle: ffi::mpv_handle,
 }
 
@@ -82,7 +86,7 @@ impl MirrorCore {
     }
 }
 
-/// Hilo del core del espejo: posee la única instancia de mpv del espejo.
+/** Mirror core thread: owns the single mpv instance for the mirror. */
 fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
     // libmpv exige LC_NUMERIC en "C" (evita MPV_ERROR_NOMEM).
     unsafe {
@@ -173,17 +177,19 @@ unsafe extern "C" {
     fn setlocale(category: i32, locale: *const u8) -> *mut u8;
 }
 
-/// Una ventana de espejo: fullscreen sobre un monitor, con su GLArea.
+/** A mirror window: fullscreen over a monitor, with its GLArea. */
 struct MirrorWindow {
     window: gtk::ApplicationWindow,
     core: MirrorCore,
 }
 
 impl MirrorWindow {
-    /// Abre una ventana fullscreen en el monitor `monitor` para el espejo dado.
-    ///
-    /// `monitor` ya está resuelto a su `gdk::Monitor` real por el controlador.
-    /// Devuelve `None` si no se pudo crear el core de mpv del espejo.
+    /**
+     * Opens a fullscreen window on the given `monitor` for the specified mirror.
+     *
+     * `monitor` is already resolved to its real `gdk::Monitor` by the controller.
+     * Returns `None` if the mirror's mpv core could not be created.
+     */
     fn open(id: &str, monitor: &gtk::gdk::Monitor, application: &adw::Application) -> Option<Self> {
         let core = MirrorCore::spawn()?;
         if core.handle.is_null() {
@@ -208,15 +214,17 @@ impl MirrorWindow {
     }
 }
 
-/// Gestiona todos los espejos: reconcilia la selección de monitores con las
-/// ventanas abiertas y (re)envía la orden de reproducción a los que lo piden.
+/**
+ * Manages all mirrors: reconciles monitor selection with open windows and
+ * (re)sends the playback command to those that request it.
+ */
 pub struct MirrorController {
     application: adw::Application,
-    /// id de monitor -> espejo abierto.
+    /** Monitor id -> open mirror. */
     windows: HashMap<String, MirrorWindow>,
-    /// Último archivo reproducido en el reproductor principal.
+    /** Last file played in the main player. */
     current_path: Option<String>,
-    /// Path que ya se cargó en los espejos abiertos (para detectar cambios de video).
+    /** Path already loaded in the mirrors (to detect video changes). */
     loaded_path: Option<String>,
 }
 
@@ -230,7 +238,7 @@ impl MirrorController {
         }
     }
 
-    /// Cierra todos los espejos.
+    /** Closes all mirrors. */
     pub fn clear(&mut self) {
         for (_, w) in self.windows.drain() {
             w.core.send(MirrorCmd::Shutdown);
@@ -238,7 +246,7 @@ impl MirrorController {
         }
     }
 
-    /// Cierra el espejo de un monitor concreto (p. ej. al deseleccionarlo).
+    /** Closes the mirror for a specific monitor (e.g. when deselected). */
     pub fn remove(&mut self, id: &str) {
         if let Some(w) = self.windows.remove(id) {
             w.core.send(MirrorCmd::Shutdown);
@@ -246,11 +254,13 @@ impl MirrorController {
         }
     }
 
-    /// Abre/cierra espejos para que coincidan con los monitores `selected`
-    /// (ids lógicos `gdk-{i}`), respetando la selección y el estado actual.
-    ///
-    /// `pos_base`: posición (segundos) a la que alinear un espejo que se abre
-    /// a mitad de reproducción.
+    /**
+     * Opens/closes mirrors so they match the `selected` monitors
+     * (logical ids `gdk-{i}`), respecting the selection and current state.
+     *
+     * `pos_base`: position (seconds) at which to align a mirror that opens
+     * mid-playback.
+     */
     pub fn reconfigure(&mut self, selected: &[String], pos_base: Option<f64>) {
         let current_path = self.current_path.clone();
 
@@ -308,43 +318,45 @@ impl MirrorController {
         }
     }
 
-    /// Notifica al reproductor principal que se reproducirá `path`.
+    /** Notifies the main player that `path` will be played. */
     pub fn set_playing(&mut self, path: String) {
         self.current_path = Some(path);
     }
 
-    /// Indica si el path actual difiere del último cargado en los espejos.
+    /** Indicates whether the current path differs from the last one loaded in mirrors. */
     fn path_changed(&self) -> bool {
         self.current_path.as_ref() != self.loaded_path.as_ref()
     }
 
-    /// Marca el path como ya cargado en los espejos.
+    /** Marks the path as already loaded in the mirrors. */
     fn mark_path_loaded(&mut self) {
         self.loaded_path = self.current_path.clone();
     }
 
-    /// `true` mientras no haya reproducción activa (sin archivo cargado).
+    /** `true` while there is no active playback (no file loaded). */
     pub fn is_idle(&self) -> bool {
         self.current_path.is_none()
     }
 
-    /// Sincroniza el control (play/pausa/salto) con el maestro.
+    /** Synchronizes control (play/pause/seek) with the master. */
     pub fn control(&mut self, cmd: MirrorCmd) {
         for (_, w) in self.windows.iter_mut() {
             w.core.send(cmd.clone());
         }
     }
 
-    /// Reinicia por completo el estado: cierra todos los espejos y olvida el
-    /// vídeo actual, de modo que `is_idle()` vuelva a ser `true` y no se
-    /// vuelvan a abrir espejos al reconciliar con una lista ya vacía.
+    /**
+     * Fully resets the state: closes all mirrors and forgets the current
+     * video, so `is_idle()` returns `true` again and no mirrors are reopened
+     * when reconciling with an already empty list.
+     */
     pub fn reset(&mut self) {
         self.clear();
         self.current_path = None;
         self.loaded_path = None;
     }
 
-    /// Resuelve el `gdk::Monitor` real a partir del id lógico `gdk-{i}`.
+    /** Resolves the real `gdk::Monitor` from the logical id `gdk-{i}`. */
     fn resolve_monitor(&self, id: &str) -> Option<gtk::gdk::Monitor> {
         let idx = id.strip_prefix("gdk-")?.parse::<usize>().ok()?;
         let display = gtk::gdk::Display::default()?;
@@ -357,7 +369,7 @@ impl MirrorController {
     }
 }
 
-/// Lee la posición actual del reproductor principal (`time-pos`, segundos).
+/** Reads the current position of the main player (`time-pos`, seconds). */
 pub fn main_time_pos() -> Option<f64> {
     let handle = crate::player::mpv_engine::mpv_handle()?;
     let name = b"time-pos\0";
