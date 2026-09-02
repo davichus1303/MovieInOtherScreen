@@ -7,7 +7,9 @@
 
 pub mod audio;
 pub mod config;
+pub mod mirror;
 pub mod monitors;
+pub mod playback;
 pub mod player;
 pub mod segments;
 pub mod video_list;
