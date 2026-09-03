@@ -6,9 +6,8 @@ use std::rc::Rc;
 use gtk::glib;
 
 use crate::constants::events::BRIDGE_INTERVAL_MS;
-use crate::player::{PlayerCommand, PlayerEvent};
+use crate::player::PlayerEvent;
 
-use crate::mirror::MirrorController;
 use mos_core::monitors::MonitorSet;
 
 /** Connects the player event receiver to the UI timeline. */
@@ -66,15 +65,9 @@ pub fn mirror_reconcile(state: &AppState) {
     state.mirror.borrow_mut().reconfigure(&selected, pos);
 }
 
-/** Sends a control command to all open mirrors. */
-pub fn mirror_control(state: &AppState, cmd: crate::mirror::MirrorCmd) {
-    state.mirror.borrow_mut().control(cmd);
-}
-
 /** Shared state for the whole interface (re-export for use in events). */
 #[derive(Clone)]
 pub struct AppState {
-    pub player: std::sync::mpsc::Sender<crate::player::PlayerCommand>,
     pub monitors: std::rc::Rc<std::cell::RefCell<MonitorSet>>,
     pub mirror: std::rc::Rc<std::cell::RefCell<crate::mirror::MirrorController>>,
 }

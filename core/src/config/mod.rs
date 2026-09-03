@@ -167,4 +167,49 @@ mod tests {
         let loaded = load_from(&path).unwrap();
         assert_eq!(loaded.get("clave"), Some("valor"));
     }
+
+    #[test]
+    fn set_reescribe_el_valor_existente_sin_duplicar() {
+        let mut c = Config::new();
+        c.set("a", "1");
+        c.set("b", "2");
+        c.set("a", "nuevo");
+        // El orden se conserva y "a" no se duplica.
+        let lines: Vec<String> = c.to_string().lines().map(str::to_string).collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(c.get("a"), Some("nuevo"));
+    }
+
+    #[test]
+    fn round_trip_con_valores_que_requieren_escape() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("escape.conf");
+        let mut c = Config::new();
+        // Valores con backslash y salto de línea que deben sobrevivir.
+        c.set("ruta", r"c:\mpeg\base");
+        c.set("multilinea", "linea1\nlinea2");
+        save_to(&path, &c).unwrap();
+
+        let loaded = load_from(&path).unwrap();
+        assert_eq!(loaded.get("ruta"), Some(r"c:\mpeg\base"));
+        assert_eq!(loaded.get("multilinea"), Some("linea1\nlinea2"));
+    }
+
+    #[test]
+    fn key_con_espacios_se_recorta_al_cargar() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("spaces.conf");
+        std::fs::write(&path, "  audio_device  =  hdmi  \n").unwrap();
+        let loaded = load_from(&path).unwrap();
+        assert_eq!(loaded.get("audio_device"), Some("hdmi"));
+    }
+
+    #[test]
+    fn load_de_fichero_vacio_devuelve_config_vacia() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("empty.conf");
+        std::fs::write(&path, "").unwrap();
+        let loaded = load_from(&path).unwrap();
+        assert!(loaded.get("cualquier").is_none());
+    }
 }

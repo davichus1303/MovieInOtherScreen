@@ -7,7 +7,6 @@ use gtk::glib;
 use gtk::prelude::*;
 
 use crate::constants::player_area;
-use crate::player::PlayerCommand;
 
 /** Timeline state (progress bar + time labels). */
 #[derive(Debug)]

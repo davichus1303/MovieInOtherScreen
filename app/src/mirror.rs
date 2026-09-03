@@ -24,7 +24,7 @@ use crate::player::embed::EmbeddedVideo;
 use crate::player::ffi;
 use crate::reporting::{self, ErrorKind};
 
-use crate::constants::mirror::{self, *};
+use crate::constants::mirror;
 use crate::constants::monitors;
 use crate::constants::mpv::*;
 use crate::constants::player;

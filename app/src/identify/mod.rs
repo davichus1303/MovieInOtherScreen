@@ -1,48 +1,52 @@
 /*! Identification of the screens (monitor overlays).
  *
  * This module is isolated: it only shows a temporary identifier on each
- * secondary monitor and has no relation to playback or mirrors. When `show_all`
- * is called, every secondary monitor displays its identifier in the top-right
- * corner for a few seconds and then the overlays close by themselves. The
- * primary monitor (where the interface lives) is never covered.
+ * secondary monitor and has no relation to playback or mirrors. The set of
+ * monitors to label comes from the shared `MonitorSet` (single source of
+ * truth), so the numbers shown match the selection cards exactly. When
+ * `show_all` is called, every secondary monitor displays its identifier in
+ * the top-right corner for a few seconds and then the overlays close by
+ * themselves. The primary monitor (where the interface lives) is never
+ * covered because the domain never marks it as a destination.
  */
 
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use gtk::prelude::*;
 
 use libadwaita as adw;
 
+use mos_core::monitors::MonitorSet;
+
 use crate::constants::monitors;
 
-/** Shows, on every secondary monitor, its identifier in the top-right corner. */
-pub fn show_all(application: &adw::Application) {
-    let Some(display) = gtk::gdk::Display::default() else {
-        crate::reporting::report(
-            crate::reporting::ErrorKind::Monitors,
-            "No se pudo acceder a la pantalla (GDK) para identificar los monitores",
-        );
-        return;
-    };
+/** Shows, on every secondary monitor of `set`, its identifier in the top-right corner. */
+pub fn show_all(application: &adw::Application, set: &Rc<std::cell::RefCell<MonitorSet>>) {
+    for mon in set.borrow().secondaries() {
+        let index = mon
+            .id()
+            .strip_prefix(monitors::ID_PREFIX)
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or_default();
+        if let Some(display_monitor) = resolve_display_monitor(mon.id()) {
+            show_on(application, &display_monitor, index);
+        }
+    }
+}
 
-    let monitors: Vec<gtk::gdk::Monitor> = display
+/** Resolves the real `gdk::Monitor` from a logical id `gdk-{i}`. */
+fn resolve_display_monitor(id: &str) -> Option<gtk::gdk::Monitor> {
+    let idx = id
+        .strip_prefix(monitors::ID_PREFIX)?
+        .parse::<usize>()
+        .ok()?;
+    let display = gtk::gdk::Display::default()?;
+    display
         .monitors()
         .iter::<gtk::gdk::Monitor>()
         .filter_map(Result::ok)
-        .collect();
-
-    // El principal es el que contiene el origen (0,0); nunca se tapa ni se
-    // etiqueta, para no cubrir la interfaz donde vive la app.
-    let primary = monitors
-        .iter()
-        .position(|g| g.geometry().x() == 0 && g.geometry().y() == 0)
-        .unwrap_or(monitors::DEFAULT_PRIMARY_INDEX);
-
-    for (i, item) in monitors.into_iter().enumerate() {
-        if i != primary {
-            show_on(application, &item, i);
-        }
-    }
+        .nth(idx)
 }
 
 /** Shows one identifier badge (its index) on `monitor` for a limited time. */
@@ -82,18 +86,8 @@ fn register_style() {
     };
     INIT.get_or_init(|| {
         let provider = gtk::CssProvider::new();
-        let css = format!(
-            ".{} {{\n  font-size: {}pt;\n  font-weight: bold;\n\
-             \x20 color: {};\n  background-color: {};\n\
-             \x20 border-radius: {}px;\n  padding: {}px;\n}}",
-            monitors::identify::CSS_LABEL,
-            monitors::identify::FONT_SIZE,
-            monitors::identify::FG_COLOR,
-            monitors::identify::BG_COLOR,
-            monitors::identify::RADIUS,
-            monitors::identify::PADDING,
-        );
-        let _ = provider.load_from_string(&css);
+        // CSS externo (identify.css), enrutado en tiempo de compilación.
+        let _ = provider.load_from_string(include_str!("identify.css"));
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,

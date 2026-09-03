@@ -29,8 +29,6 @@ pub enum PlayerCommand {
     Unload,
     /** Seeks to a position in seconds. */
     Seek(f64),
-    /** Toggles play/pause based on the current state. */
-    TogglePause,
     /** Requests thread termination. */
     Shutdown,
 }

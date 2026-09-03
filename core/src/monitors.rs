@@ -113,7 +113,7 @@ impl MonitorSet {
 
     /** Additional monitors (possible destinations), in detection order. */
     pub fn secondaries(&self) -> impl Iterator<Item = &Monitor> {
-        self.monitors.iter().filter(|m| m.is_secondary_for_target())
+        self.monitors.iter().filter(|m| m.can_be_target())
     }
 
     /** Currently selected additional monitors. */
@@ -148,7 +148,7 @@ impl MonitorSet {
 
     /** Checks whether the set has any additional monitors (beyond the primary). */
     pub fn has_secondaries(&self) -> bool {
-        self.monitors.iter().any(|m| m.is_secondary_for_target())
+        self.monitors.iter().any(|m| m.can_be_target())
     }
 
     /** Checks whether there are no additional monitors (only the primary). */
@@ -158,11 +158,6 @@ impl MonitorSet {
 }
 
 // Helpers internos para separar el razonamiento de `is_selected`.
-impl Monitor {
-    fn is_secondary_for_target(&self) -> bool {
-        self.can_be_target()
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -273,5 +268,104 @@ mod tests {
             m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
         ]);
         assert_eq!(set.selected_count(), 1);
+    }
+
+    // --- Tests de regresión del bug de sincronización ---
+    //
+    // El bug: al desactivar/activar una pantalla la sincronización se perdía
+    // porque distintas partes calculaban los "destinos" con criterios
+    // diferentes. La regla única es `can_be_target()` (no ser primario).
+    // Estos tests garantizan que TODAS las rutas usen el mismo criterio.
+
+    #[test]
+    fn secondaries_nunca_incluye_al_primario() {
+        let set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+                m("DP-1", "Monitor 3", MonitorKind::Secondary),
+            ],
+        };
+        // secondaries() nunca debe emitir el monitor primario.
+        let ids: Vec<&str> = set.secondaries().map(Monitor::id).collect();
+        assert_eq!(ids, ["HDMI-A-1", "DP-1"]);
+        assert!(!ids.contains(&"eDP-1"));
+    }
+
+    #[test]
+    fn selected_solo_contiene_secundarios() {
+        let mut set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+                m("DP-1", "Monitor 3", MonitorKind::Secondary),
+            ],
+        };
+        set.toggle("HDMI-A-1");
+        let selected_ids: Vec<&str> = set.selected().map(Monitor::id).collect();
+        assert_eq!(selected_ids, ["HDMI-A-1"]);
+        // El principal nunca aparece entre los seleccionados.
+        assert!(!selected_ids.contains(&"eDP-1"));
+    }
+
+    #[test]
+    fn ratio_seleccion_es_secundarios_seleccionados_sobre_secundarios() {
+        // Es lo que la sync consume: si todo usa secondaries(), el ratio
+        // de mirrors abiertos coincide con la selección.
+        let mut set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+                m("DP-1", "Monitor 3", MonitorKind::Secondary),
+                m("DP-2", "Monitor 4", MonitorKind::Secondary),
+            ],
+        };
+        set.toggle("DP-1");
+        set.toggle("DP-2");
+        assert_eq!(set.secondaries().count(), 3);
+        assert_eq!(set.selected_count(), 2);
+        // 2 de 3 secundarios (el primario no cuenta como destino).
+        assert_eq!(set.secondaries().count() - set.selected_count(), 1);
+    }
+
+    #[test]
+    fn toggle_de_id_inexistente_devuelve_false() {
+        let mut set = MonitorSet {
+            monitors: vec![m("eDP-1", "Monitor 1", MonitorKind::Primary)],
+        };
+        assert!(!set.toggle("no-existe"));
+        assert_eq!(set.selected_count(), 0);
+    }
+
+    #[test]
+    fn primario_nunca_aparece_en_secondaries_ni_has_secondaries() {
+        // Solo un primario: no hay secundarios aunque exista selección previa.
+        let mut set = MonitorSet {
+            monitors: Vec::new(),
+        };
+        set.update_from_detected(vec![m("eDP-1", "Monitor 1", MonitorKind::Primary)]);
+        assert!(!set.has_secondaries());
+        assert!(set.only_primary());
+        assert_eq!(set.secondaries().count(), 0);
+    }
+
+    #[test]
+    fn get_devuelve_el_monitor_por_id() {
+        let set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("DP-1", "Monitor 3", MonitorKind::Secondary),
+            ],
+        };
+        assert_eq!(set.get("DP-1").map(Monitor::label), Some("Monitor 3"));
+        assert_eq!(set.get("HDMI"), None);
+    }
+
+    #[test]
+    fn can_be_target_es_false_solo_para_primario() {
+        let primary = m("eDP-1", "Monitor 1", MonitorKind::Primary);
+        let secondary = m("DP-1", "Monitor 3", MonitorKind::Secondary);
+        assert!(!primary.can_be_target());
+        assert!(secondary.can_be_target());
     }
 }
