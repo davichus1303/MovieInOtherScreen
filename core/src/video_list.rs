@@ -155,3 +155,138 @@ impl VideoList {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn video(name: &str) -> Video {
+        Video::new(PathBuf::from(name))
+    }
+
+    fn list(names: &[&str]) -> VideoList {
+        let mut l = VideoList::new();
+        l.add(names.iter().map(|n| video(n)).collect());
+        l
+    }
+
+    #[test]
+    fn lista_vacia_sin_seleccion() {
+        let l = VideoList::new();
+        assert!(l.is_empty());
+        assert_eq!(l.len(), 0);
+        assert_eq!(l.selected_index(), None);
+        assert_eq!(l.selected(), None);
+    }
+
+    #[test]
+    fn nombre_derivado_del_file_name() {
+        assert_eq!(video("pelicula.mp4").name(), "pelicula.mp4");
+        assert_eq!(video("/ruta/a/otra.mkv").name(), "otra.mkv");
+    }
+
+    #[test]
+    fn video_sin_file_name_usa_la_ruta_completa() {
+        let v = Video::new(PathBuf::from("/"));
+        assert_eq!(v.name(), "/");
+    }
+
+    #[test]
+    fn add_anade_al_final() {
+        let mut l = VideoList::new();
+        l.add(vec![video("a.mp4"), video("b.mp4")]);
+        assert_eq!(l.len(), 2);
+        assert_eq!(
+            l.iter().map(|v| v.name()).collect::<Vec<_>>(),
+            ["a.mp4", "b.mp4"]
+        );
+    }
+
+    #[test]
+    fn select_valido_e_invalido() {
+        let mut l = list(&["a.mp4", "b.mp4", "c.mp4"]);
+        assert!(l.select(1));
+        assert_eq!(l.selected_index(), Some(1));
+        assert_eq!(l.selected().map(|v| v.name()), Some("b.mp4"));
+        // Índice que no existe.
+        assert!(!l.select(99));
+        // El intento fallido no rompe la selección previa.
+        assert_eq!(l.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn clear_selection_no_borra_videos() {
+        let mut l = list(&["a.mp4", "b.mp4"]);
+        l.select(1);
+        l.clear_selection();
+        assert_eq!(l.selected_index(), None);
+        assert_eq!(l.len(), 2);
+    }
+
+    #[test]
+    fn clear_borra_todo() {
+        let mut l = list(&["a.mp4", "b.mp4"]);
+        l.select(0);
+        l.clear();
+        assert!(l.is_empty());
+        assert_eq!(l.selected_index(), None);
+    }
+
+    #[test]
+    fn next_avanza_y_se_queda_al_final() {
+        let mut l = list(&["a.mp4", "b.mp4", "c.mp4"]);
+        l.select(0);
+        assert_eq!(l.next(), Navigate::Moved);
+        assert_eq!(l.selected_index(), Some(1));
+        assert_eq!(l.next(), Navigate::Moved);
+        assert_eq!(l.selected_index(), Some(2));
+        assert_eq!(l.next(), Navigate::Stuck);
+        assert_eq!(l.selected_index(), Some(2));
+    }
+
+    #[test]
+    fn previous_retrocede_y_se_queda_al_inicio() {
+        let mut l = list(&["a.mp4", "b.mp4", "c.mp4"]);
+        l.select(2);
+        assert_eq!(l.previous(), Navigate::Moved);
+        assert_eq!(l.selected_index(), Some(1));
+        assert_eq!(l.previous(), Navigate::Moved);
+        assert_eq!(l.selected_index(), Some(0));
+        assert_eq!(l.previous(), Navigate::Stuck);
+        assert_eq!(l.selected_index(), Some(0));
+    }
+
+    #[test]
+    fn sin_seleccion_saltan_al_primero() {
+        let mut l = list(&["a.mp4", "b.mp4"]);
+        assert_eq!(l.next(), Navigate::Moved);
+        assert_eq!(l.selected_index(), Some(0));
+        let mut l2 = list(&["a.mp4", "b.mp4"]);
+        assert_eq!(l2.previous(), Navigate::Moved);
+        assert_eq!(l2.selected_index(), Some(0));
+    }
+
+    #[test]
+    fn navegacion_en_lista_vacia_esta_atascada() {
+        let mut l = VideoList::new();
+        assert_eq!(l.next(), Navigate::Stuck);
+        assert_eq!(l.previous(), Navigate::Stuck);
+        assert_eq!(l.selected_index(), None);
+    }
+
+    #[test]
+    fn get_devuelve_el_video_en_indice() {
+        let l = list(&["a.mp4", "b.mp4"]);
+        assert_eq!(l.get(0).map(|v| v.name()), Some("a.mp4"));
+        assert_eq!(l.get(5), None);
+    }
+
+    #[test]
+    fn add_conserva_la_seleccion_existente() {
+        let mut l = list(&["a.mp4"]);
+        l.select(0);
+        l.add(vec![video("b.mp4")]);
+        assert_eq!(l.selected_index(), Some(0));
+        assert_eq!(l.len(), 2);
+    }
+}

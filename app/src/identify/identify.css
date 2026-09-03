@@ -1,0 +1,8 @@
+.identify-label {
+  font-size: 48pt;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 1);
+  background-color: rgba(0, 0, 0, 0.75);
+  border-radius: 12px;
+  padding: 16px;
+}

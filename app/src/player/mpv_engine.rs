@@ -135,7 +135,6 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
             Ok(PlayerCommand::Stop) => player.stop(),
             Ok(PlayerCommand::Unload) => player.unload(),
             Ok(PlayerCommand::Seek(seconds)) => player.seek(seconds),
-            Ok(PlayerCommand::TogglePause) => player.toggle_pause(),
             Ok(PlayerCommand::Shutdown) => break,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -222,12 +221,6 @@ impl MpvSession {
             return;
         }
         self.set_paused(true);
-    }
-
-    fn toggle_pause(&mut self) {
-        let target = !self.paused;
-        let _ = self.handler.set_property(PROP_PAUSE, target);
-        self.set_paused(target);
     }
 
     fn stop(&mut self) {

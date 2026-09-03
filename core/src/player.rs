@@ -234,4 +234,56 @@ mod tests {
         assert_eq!(c.current_index(), Some(2));
         assert_eq!(c.play_state(), PlayState::Paused);
     }
+
+    #[test]
+    fn play_con_lista_vacia_pone_detenido() {
+        let mut c = PlaybackController::new();
+        c.apply(Command::Play, &list(0));
+        assert_eq!(c.play_state(), PlayState::Stopped);
+        assert_eq!(c.current_index(), None);
+    }
+
+    #[test]
+    fn seek_y_seek_segment_no_navegan() {
+        let mut c = PlaybackController::new();
+        c.handoff(1, PlayState::Playing);
+        assert_eq!(c.apply(Command::Seek(0.5), &list(3)), PlaybackNav::Same);
+        assert_eq!(
+            c.apply(Command::SeekSegment { segment: 5 }, &list(3)),
+            PlaybackNav::Same
+        );
+        assert_eq!(c.current_index(), Some(1));
+        assert_eq!(c.play_state(), PlayState::Playing);
+    }
+
+    #[test]
+    fn handoff_registra_estado_externo() {
+        let mut c = PlaybackController::new();
+        c.handoff(2, PlayState::Playing);
+        assert_eq!(c.current_index(), Some(2));
+        assert_eq!(c.play_state(), PlayState::Playing);
+    }
+
+    #[test]
+    fn clear_resetea_el_estado() {
+        let mut c = PlaybackController::new();
+        c.handoff(2, PlayState::Playing);
+        c.clear();
+        assert_eq!(c.current_index(), None);
+        assert_eq!(c.play_state(), PlayState::Stopped);
+    }
+
+    #[test]
+    fn siguiente_sin_video_cargado_salta_al_primero() {
+        let mut c = PlaybackController::new();
+        assert_eq!(c.apply(Command::Next, &list(3)), PlaybackNav::Changed);
+        assert_eq!(c.current_index(), Some(0));
+    }
+
+    #[test]
+    fn siguiente_con_lista_vacia_imposible() {
+        let mut c = PlaybackController::new();
+        assert_eq!(c.apply(Command::Next, &list(0)), PlaybackNav::Impossible);
+        assert_eq!(c.current_index(), None);
+    }
 }

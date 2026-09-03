@@ -109,3 +109,74 @@ pub fn spawn_playback_engine(
         })
         .expect("playback engine thread must start")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estado_inicial_sin_reproduccion() {
+        let s = PlaybackState::default();
+        assert_eq!(s.position, 0.0);
+        assert_eq!(s.duration, 0.0);
+        assert!(!s.paused);
+        assert_eq!(s.current_path, None);
+        assert_eq!(s.audio_device, None);
+        assert_eq!(s.progress(), 0.0);
+    }
+
+    #[test]
+    fn posicion_se_clampea_a_la_duracion() {
+        let mut s = PlaybackState::default();
+        s.update_duration(100.0);
+        s.update_position(150.0);
+        assert_eq!(s.position, 100.0);
+        s.update_position(-5.0);
+        assert_eq!(s.position, 0.0);
+    }
+
+    #[test]
+    fn duracion_negativa_se_recorta_a_cero() {
+        let mut s = PlaybackState::default();
+        s.update_duration(-10.0);
+        assert_eq!(s.duration, 0.0);
+    }
+
+    #[test]
+    fn progress_mide_el_avance_normalizado() {
+        let mut s = PlaybackState::default();
+        s.update_duration(200.0);
+        s.update_position(100.0);
+        assert!((s.progress() - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn progress_se_clampea_al_rango() {
+        let mut s = PlaybackState::default();
+        s.update_duration(10.0);
+        s.update_position(100.0);
+        assert_eq!(s.progress(), 1.0);
+        s.update_position(0.0);
+        assert_eq!(s.progress(), 0.0);
+    }
+
+    #[test]
+    fn progress_es_cero_sin_duracion() {
+        let mut s = PlaybackState::default();
+        s.update_position(5.0);
+        assert_eq!(s.progress(), 0.0);
+    }
+
+    #[test]
+    fn set_paused_y_estado_de_archivo() {
+        let mut s = PlaybackState::default();
+        s.set_paused(true);
+        assert!(s.paused);
+        s.set_path(Some("video.mp4".to_string()));
+        assert_eq!(s.current_path.as_deref(), Some("video.mp4"));
+        s.set_audio_device(Some("hdmi".to_string()));
+        assert_eq!(s.audio_device.as_deref(), Some("hdmi"));
+        s.set_path(None);
+        assert_eq!(s.current_path, None);
+    }
+}

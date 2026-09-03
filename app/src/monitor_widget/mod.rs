@@ -7,12 +7,10 @@ use libadwaita as adw;
 use crate::constants::monitors;
 use crate::events::AppState;
 use crate::mirror::MirrorController;
-use crate::player::PlayerCommand;
 use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
 
 /** State needed to build monitor widgets. */
 pub struct MonitorDeps {
-    pub player: std::sync::mpsc::Sender<PlayerCommand>,
     pub mirror: std::rc::Rc<std::cell::RefCell<MirrorController>>,
     pub monitors: std::rc::Rc<std::cell::RefCell<MonitorSet>>,
     pub application: adw::Application,
@@ -52,8 +50,9 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     let identify = gtk::Button::with_label(monitors::LABEL_IDENTIFY_BUTTON);
     identify.set_halign(gtk::Align::Start);
     let application = deps.application.clone();
+    let monitor_set = deps.monitors.clone();
     identify.connect_clicked(move |_| {
-        crate::identify::show_all(&application);
+        crate::identify::show_all(&application, &monitor_set);
     });
     section.append(&identify);
 
@@ -160,11 +159,9 @@ pub fn monitor_card(mon: &Monitor, deps: &MonitorDeps) -> gtk::ToggleButton {
     } else {
         let monitors = deps.monitors.clone();
         let mirror = deps.mirror.clone();
-        let player = deps.player.clone();
         button.connect_toggled(move |_| {
             let _ = monitors.borrow_mut().toggle(&id);
             let st = AppState {
-                player: player.clone(),
                 monitors: monitors.clone(),
                 mirror: mirror.clone(),
             };

@@ -18,14 +18,13 @@ use gtk::prelude::*;
 
 use libadwaita as adw;
 
-use mos_core::monitors::{Monitor, MonitorKind, MonitorSet};
+use mos_core::monitors::MonitorSet;
 use mos_core::video_list::VideoList;
 
 use crate::constants::app;
-use crate::events;
 use crate::mirror;
 use crate::monitor_widget;
-use crate::player::{PlayerCommand, PlayerEvent};
+use crate::player::PlayerCommand;
 use crate::player_area::{self, Timeline};
 use crate::sidebar;
 
@@ -140,7 +139,6 @@ fn build_player_area(
 
     // Monitores en el área de reproducción (lado derecho)
     let monitors = monitor_widget::build_monitors_section(&monitor_widget::MonitorDeps {
-        player: state.player.clone(),
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
         application: application.clone(),

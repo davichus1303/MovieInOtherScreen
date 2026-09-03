@@ -16,7 +16,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::OnceLock;
 
 use gtk::glib;
-use gtk::prelude::*;
 
 use libadwaita as adw;
 
@@ -32,12 +31,8 @@ pub enum ErrorKind {
     Mirror,
     /** Error from the mpv playback engine. */
     Player,
-    /** Failure loading/opening a video file. */
-    Video,
     /** Failure detecting or selecting monitors. */
     Monitors,
-    /** Audio error. */
-    Audio,
     /** Internal/unexpected unclassified error. */
     Internal,
 }
@@ -48,9 +43,7 @@ impl ErrorKind {
         let base = match self {
             ErrorKind::Mirror => user_messages::MIRROR.to_string(),
             ErrorKind::Player => user_messages::PLAYER.to_string(),
-            ErrorKind::Video => user_messages::VIDEO.to_string(),
             ErrorKind::Monitors => user_messages::MONITORS.to_string(),
-            ErrorKind::Audio => user_messages::AUDIO.to_string(),
             ErrorKind::Internal => user_messages::INTERNAL.to_string(),
         };
         if detail.trim().is_empty() {
@@ -65,9 +58,7 @@ impl ErrorKind {
         match self {
             ErrorKind::Mirror => tags::MIRROR,
             ErrorKind::Player => tags::PLAYER,
-            ErrorKind::Video => tags::VIDEO,
             ErrorKind::Monitors => tags::MONITORS,
-            ErrorKind::Audio => tags::AUDIO,
             ErrorKind::Internal => tags::INTERNAL,
         }
     }
@@ -95,14 +86,13 @@ pub fn report(kind: ErrorKind, detail: impl AsRef<str>) {
         detail: detail.as_ref().to_string(),
     };
 
-    let user_msg = report.kind.user_message(&report.detail);
     let log_msg = LOG_TAG_FORMAT
         .replacen("{}", report.kind.tag(), 1)
         .replacen("{}", &report.detail, 1);
 
     // Los errores siempre se registran en logs (diagnóstico).
     match report.kind {
-        ErrorKind::Internal | ErrorKind::Player | ErrorKind::Video => {
+        ErrorKind::Internal | ErrorKind::Player => {
             logging::error(&log_msg);
         }
         _ => {

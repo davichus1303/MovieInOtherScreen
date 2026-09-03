@@ -73,20 +73,10 @@ pub mod monitors {
 
     /** Constants for the screen identification overlay. */
     pub mod identify {
-        /** CSS class of the identifier badge. */
+        /** CSS class of the identifier badge (styled in `identify.css`). */
         pub const CSS_LABEL: &str = "identify-label";
         /** How long the identification stays visible (ms). */
         pub const DURATION_MS: u32 = 5_000;
-        /** Emphasized font size (pt) of the identifier badge. */
-        pub const FONT_SIZE: i32 = 48;
-        /** Background color (RGBA) of the identifier badge. */
-        pub const BG_COLOR: &str = "rgba(0, 0, 0, 0.75)";
-        /** Text color (RGBA) of the identifier badge. */
-        pub const FG_COLOR: &str = "rgba(255, 255, 255, 1)";
-        /** Corner radius (px) of the identifier badge. */
-        pub const RADIUS: i32 = 12;
-        /** Padding (px) of the identifier badge. */
-        pub const PADDING: i32 = 16;
         /** Top margin of the badge (px). */
         pub const MARGIN_TOP: i32 = 16;
         /** End (right) margin of the badge (px). */
@@ -112,49 +102,6 @@ pub mod monitors {
         pub const CARD_WIDTH: i32 = 150;
         /** Height of a monitor card. */
         pub const CARD_HEIGHT: i32 = 70;
-    }
-}
-
-pub mod audio {
-    /** Placeholder shown while detecting audio devices. */
-    pub const LABEL_LOADING: &str = "Cargando…";
-    /** Title of the audio section. */
-    pub const LABEL_SECTION_TITLE: &str = "Salida de audio";
-    /** Description hint shown under the audio title. */
-    pub const HINT_DESCRIPTION: &str =
-        "Dispositivo por el que se escucha la reproducción. Si no aparece \
-         ninguno, se usa el predeterminado del sistema.";
-    /** Item format of the combo box entries. */
-    pub const ITEM_FORMAT: &str = "{} ({})";
-    /** CSS class for the section title. */
-    pub const CSS_TITLE: &str = "title-4";
-    /** Detection interval (ms) between audio scans. */
-    pub const DETECTION_INTERVAL_MS: u32 = 5000;
-
-    pub mod mock {
-        /** Mock speakers device id. */
-        pub const DEVICE_SPEAKERS: &str = "alsa_output.pci-0000_00_1f.3.analog-stereo";
-        /** Mock speakers label. */
-        pub const LABEL_SPEAKERS: &str = "Speakers";
-        /** Mock HDMI device id. */
-        pub const DEVICE_HDMI: &str = "alsa_output.pci-0000_01_00.1.hdmi-stereo";
-        /** Mock HDMI label. */
-        pub const LABEL_HDMI: &str = "HDMI";
-    }
-
-    pub mod layout {
-        /** Spacing of the section box. */
-        pub const SECTION_SPACING: i32 = 8;
-        /** Top margin of the section. */
-        pub const MARGIN_TOP: i32 = 8;
-        /** Bottom margin of the section. */
-        pub const MARGIN_BOTTOM: i32 = 12;
-        /** Start margin of the section. */
-        pub const MARGIN_START: i32 = 12;
-        /** End margin of the section. */
-        pub const MARGIN_END: i32 = 12;
-        /** Max width (chars) of the hint label. */
-        pub const HINT_MAX_WIDTH_CHARS: i32 = 60;
     }
 }
 
@@ -250,8 +197,6 @@ pub mod mpv {
     pub const PROP_DURATION: &str = "duration";
     /** mpv property controlling playback pause. */
     pub const PROP_PAUSE: &str = "pause";
-    /** mpv property with the output audio device. */
-    pub const PROP_AUDIO_DEVICE: &str = "audio-device";
     /** mpv option that keeps the file open after it ends. */
     pub const OPT_KEEP_OPEN: &str = "keep-open";
     /** Value `yes` for boolean mpv options. */
@@ -268,8 +213,6 @@ pub mod mpv {
     pub const CMD_LOADFILE: &str = "loadfile";
     /** mpv command to seek. */
     pub const CMD_SEEK: &str = "seek";
-    /** mpv command to quit the core. */
-    pub const CMD_QUIT: &str = "quit";
     /** mpv command to set the audio filter. */
     pub const CMD_AF: &str = "af";
     /** mpv command to set the video filter. */
@@ -280,14 +223,6 @@ pub mod mpv {
     pub const SEEK_TO_START: &str = "0";
     /** Empty path used to detach the loaded file. */
     pub const EMPTY_LOAD_PATH: &str = "";
-    /** Prefix that marks a PipeWire audio device id. */
-    pub const AUDIO_PREFIX_PIPEWIRE: &str = "pipewire/";
-    /** Prefix that marks a PulseAudio audio device id. */
-    pub const AUDIO_PREFIX_PULSE: &str = "pulse/";
-    /** Prefix that marks an ALSA audio device id. */
-    pub const AUDIO_PREFIX_ALSA: &str = "alsa/";
-    /** Template of the fade-in filter, without the duration. */
-    pub const FADE_IN_TEMPLATE: &str = "fade in:st=0:d=";
 }
 
 pub mod mirror {
@@ -340,8 +275,6 @@ pub mod engine {
     pub const OBSERVE_ID_TIME_POS: u32 = 1;
     /** Observe reply id for the `duration` property. */
     pub const OBSERVE_ID_DURATION: u32 = 2;
-    /** Observe reply id for the `pause` property. */
-    pub const OBSERVE_ID_PAUSE: u32 = 3;
     /** Duration (seconds) of the transition fade. */
     pub const TRANSITION_SECONDS: f64 = 3.0;
 }
@@ -359,12 +292,8 @@ pub mod reporting {
         pub const MIRROR: &str = "Error con un monitor espejo";
         /** User message for a playback error. */
         pub const PLAYER: &str = "Error de reproducción";
-        /** User message for a video load error. */
-        pub const VIDEO: &str = "No se pudo cargar el vídeo";
         /** User message for a monitors error. */
         pub const MONITORS: &str = "Error con los monitores";
-        /** User message for an audio error. */
-        pub const AUDIO: &str = "Error de audio";
         /** User message for an internal error. */
         pub const INTERNAL: &str = "Error interno";
     }
@@ -374,12 +303,8 @@ pub mod reporting {
         pub const MIRROR: &str = "monitor";
         /** Log tag for the player category. */
         pub const PLAYER: &str = "player";
-        /** Log tag for the video category. */
-        pub const VIDEO: &str = "video";
         /** Log tag for the monitors category. */
         pub const MONITORS: &str = "monitors";
-        /** Log tag for the audio category. */
-        pub const AUDIO: &str = "audio";
         /** Log tag for the internal category. */
         pub const INTERNAL: &str = "internal";
     }
@@ -425,14 +350,10 @@ pub mod logging {
 pub mod main_app {
     /** `LC_NUMERIC` locale category (POSIX). */
     pub const LC_NUMERIC: i32 = 1;
-    /** Locale required by libmpv (`C`). */
-    pub const LOCALE_C: &str = "C";
     /** Exit code used when the Wayland requirement is not met. */
     pub const EXIT_CODE_REQUIREMENT: i32 = 1;
     /** Fallback message of an unknown panic payload. */
     pub const MSG_UNKNOWN_PANIC: &str = "pánico desconocido";
-    /** Name of the main thread of the mpv engine. */
-    pub const ENGINE_THREAD_NAME: &str = "mpv-engine";
 
     pub mod messages {
         /** Logged when the app starts. */
@@ -443,28 +364,15 @@ pub mod main_app {
         /** Logged when Wayland is detected. */
         pub const LOG_WAYLAND_OK: &str = "Entorno Wayland detectado.";
     }
-
-    /** The full message shown when Wayland is required but absent. */
-    pub const REQUIREMENT_MESSAGE: &str = "\
-Movies on Other Screens requiere Wayland para funcionar.
-
-Se ha detectado que la aplicación se está ejecutando bajo X11 o en un \
-entorno sin Wayland. No se ofrece compatibilidad parcial con X11.
-
-Inicia una sesión de GNOME sobre Wayland y vuelve a intentarlo.";
 }
 
 pub mod player {
     /** `LC_NUMERIC` locale category (POSIX). */
     pub const LC_NUMERIC: i32 = 1;
-    /** Locale required by libmpv (`C`). */
-    pub const LOCALE_C: &str = "C";
 
     pub mod messages {
         /** Message when the player cannot be initialized. */
         pub const INIT_FAIL: &str = "No se pudo inicializar el reproductor: ";
-        /** Message when loading a video fails. */
-        pub const LOAD_FAIL: &str = "Error al cargar el vídeo '{path}': ";
     }
 
     pub mod logs {
@@ -472,19 +380,6 @@ pub mod player {
         pub const ENGINE_STARTED: &str = "Motor mpv inicializado correctamente.";
         /** Prefix of the load log. */
         pub const LOAD_PREFIX: &str = "Cargando vídeo en el motor mpv: ";
-    }
-}
-
-pub mod playback {
-    pub mod logs {
-        /** Prefix of the queued-playback log. */
-        pub const QUEUED_PREFIX: &str = "Reproducción encolada: ";
-        /** Prefix of the out-of-range index log. */
-        pub const MISSING_INDEX_PREFIX: &str = "Índice fuera de rango al reproducir: ";
-        /** Message when a send to the engine fails. */
-        pub const SEND_FAIL: &str = "No se pudo enviar la orden de carga al motor mpv: ";
-        /** Message when playback is requested with no selection. */
-        pub const NO_SELECTION: &str = "Reproducir solicitado sin vídeo seleccionado";
     }
 }
 

@@ -3,10 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk::glib;
 use gtk::prelude::*;
-
-use libadwaita as adw;
 
 use mos_core::monitors::MonitorSet;
 use mos_core::video_list::VideoList;
@@ -14,7 +11,7 @@ use mos_core::video_list::VideoList;
 use crate::constants::sidebar;
 use crate::events::mirror_on_play;
 use crate::events::AppState;
-use crate::player::{PlayerCommand, PlayerEvent};
+use crate::player::PlayerCommand;
 
 /** State needed to build the sidebar. */
 pub struct SidebarDeps {
@@ -91,8 +88,6 @@ fn connect_video_list(
     let videos_for_row = videos.clone();
     let player_for_row = player.clone();
     let mirror_for_row = mirror.clone();
-    let monitors_for_row = monitors.clone();
-    let list_for_row = list_clone.clone();
 
     // --- For clear_button closure ---
     let videos_for_clear = videos.clone();
@@ -115,8 +110,6 @@ fn connect_video_list(
         filters.append(&filter);
 
         // Use PRE-CLONED values, NOT deps
-        let videos_for_dialog = videos_for_add.clone();
-        let list_for_dialog = list_for_add.clone();
         let list_for_add_closure = list_for_add.clone();
 
         let dialog = gtk::FileDialog::builder()
@@ -165,7 +158,6 @@ fn connect_video_list(
         // Use the cloned player, mirror, monitors
         let _ = player_for_row.send(crate::player::PlayerCommand::Load(path.clone()));
         let st = AppState {
-            player: player_for_row.clone(),
             monitors: monitors.clone(),
             mirror: mirror_for_row.clone(),
         };

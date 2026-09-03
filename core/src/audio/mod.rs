@@ -166,3 +166,121 @@ impl AudioSelector {
         &self.devices
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dev(id: &str, label: &str, is_default: bool) -> AudioDevice {
+        AudioDevice::new(id.to_string(), label.to_string(), is_default)
+    }
+
+    fn devices_default() -> AudioDevices {
+        let mut d = AudioDevices::new();
+        d.update_detected(vec![
+            dev("speakers", "Speakers", true),
+            dev("hdmi", "HDMI", false),
+        ]);
+        d
+    }
+
+    /** Detector de prueba inyectable (evita depender de hardware real). */
+    struct FakeDetector {
+        devices: Vec<AudioDevice>,
+    }
+
+    impl AudioDetector for FakeDetector {
+        fn detect(&self) -> Vec<AudioDevice> {
+            self.devices.clone()
+        }
+    }
+
+    #[test]
+    fn sin_preferencia_activa_el_default() {
+        let d = devices_default();
+        assert_eq!(d.active_id(), Some("speakers"));
+        assert!(d.is_active("speakers"));
+        assert_eq!(d.active().map(|x| x.id()), Some("speakers"));
+    }
+
+    #[test]
+    fn select_devuelve_false_si_no_existe() {
+        let mut d = devices_default();
+        assert!(!d.select("inexistente"));
+        // Sigue con el default.
+        assert_eq!(d.active_id(), Some("speakers"));
+    }
+
+    #[test]
+    fn select_activa_el_dispositivo_elegido() {
+        let mut d = devices_default();
+        assert!(d.select("hdmi"));
+        assert!(d.is_active("hdmi"));
+        assert_eq!(d.preferred_id(), Some("hdmi"));
+        assert_eq!(d.preference_for_storage().as_deref(), Some("hdmi"));
+    }
+
+    #[test]
+    fn al_redetectar_se_conserva_el_preferido() {
+        let mut d = devices_default();
+        d.select("hdmi");
+        d.update_detected(vec![
+            dev("speakers", "Speakers", true),
+            dev("hdmi", "HDMI", false),
+        ]);
+        assert!(d.is_active("hdmi"));
+    }
+
+    #[test]
+    fn si_el_preferido_desaparece_cae_al_default() {
+        let mut d = devices_default();
+        d.select("hdmi");
+        // El dispositivo preferido ya no está conectado.
+        d.update_detected(vec![dev("speakers", "Speakers", true)]);
+        assert_eq!(d.active_id(), Some("speakers"));
+    }
+
+    #[test]
+    fn restore_preference_vuelve_a_aplicar() {
+        let mut d = AudioDevices::new();
+        d.restore_preference(Some("hdmi".to_string()));
+        d.update_detected(vec![
+            dev("speakers", "Speakers", true),
+            dev("hdmi", "HDMI", false),
+        ]);
+        assert!(d.is_active("hdmi"));
+    }
+
+    #[test]
+    fn restore_de_preferencia_inexistente_usa_default() {
+        let mut d = AudioDevices::new();
+        d.restore_preference(Some("fantasma".to_string()));
+        d.update_detected(vec![
+            dev("speakers", "Speakers", true),
+            dev("hdmi", "HDMI", false),
+        ]);
+        assert_eq!(d.active_id(), Some("speakers"));
+    }
+
+    #[test]
+    fn iter_y_len_reflejan_deteccion() {
+        let d = devices_default();
+        assert_eq!(d.len(), 2);
+        assert_eq!(d.iter().count(), 2);
+        assert_eq!(d.get("hdmi").map(|x| x.label()), Some("HDMI"));
+        assert_eq!(d.get("nope"), None);
+    }
+
+    #[test]
+    fn audio_selector_con_detector_fake() {
+        let mut selector = AudioSelector::new(Box::new(FakeDetector {
+            devices: vec![dev("a", "A", true), dev("b", "B", false)],
+        }));
+        // Antes de refrescar no hay dispositivo activo.
+        assert_eq!(selector.devices().active_id(), None);
+        selector.refresh();
+        assert_eq!(selector.devices().active_id(), Some("a"));
+        assert!(selector.select("b"));
+        assert!(selector.devices().is_active("b"));
+    }
+}
