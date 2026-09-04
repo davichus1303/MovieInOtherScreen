@@ -16,7 +16,7 @@ pub struct MonitorDeps {
     pub application: adw::Application,
 }
 
-/** Builds the complete monitors section (title + hint + row). */
+/** Builds the complete monitors section (title + hint + cards + actions). */
 pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     detect_monitors(&deps.monitors);
 
@@ -43,10 +43,109 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     hint.set_max_width_chars(monitors::layout::HINT_MAX_WIDTH_CHARS);
     section.append(&hint);
 
-    let mirrors = monitors_row(deps);
-    mirrors.set_halign(gtk::Align::Start);
-    section.append(&mirrors);
+    // Selection cards (rebuilt when the principal monitor changes).
+    let cards_box = gtk::Box::new(
+        gtk::Orientation::Vertical,
+        monitors::layout::CARD_ROW_SPACING,
+    );
+    cards_box.set_halign(gtk::Align::Start);
+    refresh_cards(&cards_box, deps);
+    section.append(&cards_box);
 
+    // Actions row: principal selector + identify screens.
+    let actions = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        monitors::layout::ACTIONS_ROW_SPACING,
+    );
+    actions.set_halign(gtk::Align::Start);
+    actions.set_valign(gtk::Align::Center);
+    actions.append(&primary_selector(deps, &cards_box));
+    actions.append(&identify_button(deps));
+    section.append(&actions);
+
+    section
+}
+
+/** Rebuilds the cards inside `cards_box` from the current logical set. */
+pub fn refresh_cards(cards_box: &gtk::Box, deps: &MonitorDeps) {
+    while let Some(child) = cards_box.first_child() {
+        cards_box.remove(&child);
+    }
+    let row = monitors_row(deps);
+    row.set_halign(gtk::Align::Start);
+    cards_box.append(&row);
+}
+
+/** Dropdown listing every monitor; picking one makes it the principal. */
+fn primary_selector(deps: &MonitorDeps, cards_box: &gtk::Box) -> gtk::DropDown {
+    let set = deps.monitors.borrow();
+    let items: Vec<String> = set
+        .iter()
+        .map(|m| {
+            let kind = if m.is_primary() {
+                monitors::LABEL_MONITOR_PRIMARY
+            } else {
+                monitors::LABEL_MONITOR_SECONDARY
+            };
+            monitors::PRIMARY_SELECTOR_FORMAT
+                .replace("{kind}", kind)
+                .replace("{label}", m.label())
+        })
+        .collect();
+
+    if items.is_empty() {
+        drop(set);
+        let model = gtk::StringList::new(&[]);
+        let dropdown = gtk::DropDown::new(Some(model), None::<gtk::Expression>);
+        dropdown.set_sensitive(false);
+        return dropdown;
+    }
+
+    let entries: Vec<&str> = items.iter().map(String::as_str).collect();
+    let model = gtk::StringList::new(&entries);
+    let dropdown = gtk::DropDown::new(Some(model), None::<gtk::Expression>);
+    dropdown.set_halign(gtk::Align::Start);
+    if let Some((idx, _)) = set.iter().enumerate().find(|(_, m)| m.is_primary()) {
+        dropdown.set_selected(idx as u32);
+    }
+    drop(set);
+
+    let monitor_label = monitors::LABEL_PRIMARY_SELECTOR;
+    dropdown.set_tooltip_text(Some(monitor_label));
+
+    let monitors = deps.monitors.clone();
+    let mirror = deps.mirror.clone();
+    let application = deps.application.clone();
+    let cards = cards_box.clone();
+    dropdown.connect_selected_notify(move |dd| {
+        let pos = dd.selected();
+        if pos == gtk::INVALID_LIST_POSITION {
+            return;
+        }
+        let id = format!("{}{}", monitors::ID_PREFIX, pos);
+        {
+            let mut s = monitors.borrow_mut();
+            if !s.set_primary(&id) {
+                return;
+            }
+        }
+        let owned = MonitorDeps {
+            mirror: mirror.clone(),
+            monitors: monitors.clone(),
+            application: application.clone(),
+        };
+        refresh_cards(&cards, &owned);
+        let st = AppState {
+            monitors: monitors.clone(),
+            mirror: mirror.clone(),
+        };
+        crate::events::mirror_reconcile(&st);
+    });
+    dropdown
+}
+
+/** Button that identifies every secondary screen with a temporary badge. */
+fn identify_button(deps: &MonitorDeps) -> gtk::Button {
     let identify = gtk::Button::with_label(monitors::LABEL_IDENTIFY_BUTTON);
     identify.set_halign(gtk::Align::Start);
     let application = deps.application.clone();
@@ -54,9 +153,7 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     identify.connect_clicked(move |_| {
         crate::identify::show_all(&application, &monitor_set);
     });
-    section.append(&identify);
-
-    section
+    identify
 }
 
 /** Detects the system monitors (GDK) and updates the logical set. */

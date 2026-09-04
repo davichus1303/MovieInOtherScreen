@@ -155,6 +155,29 @@ impl MonitorSet {
     pub fn only_primary(&self) -> bool {
         !self.has_secondaries()
     }
+
+    /**
+     * Marks the monitor `id` as the principal and the rest as secondary.
+     *
+     * Used when the user picks the screen that acts as the interface monitor.
+     * The new principal stops being a destination (its selection is cleared),
+     * while every other monitor becomes a possible destination again. Returns
+     * `false` if `id` does not belong to the set.
+     */
+    pub fn set_primary(&mut self, id: &str) -> bool {
+        if !self.monitors.iter().any(|m| m.id() == id) {
+            return false;
+        }
+        for m in self.monitors.iter_mut() {
+            if m.id() == id {
+                m.kind = MonitorKind::Primary;
+                m.selected = false;
+            } else {
+                m.kind = MonitorKind::Secondary;
+            }
+        }
+        true
+    }
 }
 
 // Helpers internos para separar el razonamiento de `is_selected`.
@@ -367,5 +390,65 @@ mod tests {
         let secondary = m("DP-1", "Monitor 3", MonitorKind::Secondary);
         assert!(!primary.can_be_target());
         assert!(secondary.can_be_target());
+    }
+
+    // --- Tests of changing the principal monitor ---
+
+    #[test]
+    fn set_primary_marca_el_nuevo_y_desbloquea_el_resto() {
+        let mut set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+            ],
+        };
+        assert!(set.set_primary("HDMI-A-1"));
+        // The new one is primary and the old one becomes a target again.
+        assert!(set.get("HDMI-A-1").unwrap().is_primary());
+        assert!(set.get("eDP-1").unwrap().can_be_target());
+        assert_eq!(set.secondaries().count(), 1);
+        assert_eq!(set.get("eDP-1").map(Monitor::id), Some("eDP-1"));
+    }
+
+    #[test]
+    fn set_primary_limpia_la_seleccion_del_nuevo_principal() {
+        let mut set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+            ],
+        };
+        set.toggle("HDMI-A-1");
+        assert_eq!(set.selected_count(), 1);
+        assert!(set.set_primary("HDMI-A-1"));
+        // The new principal stops being a target: it is no longer selected.
+        assert_eq!(set.selected_count(), 0);
+        assert!(set.get("HDMI-A-1").unwrap().is_primary());
+    }
+
+    #[test]
+    fn set_primary_de_id_inexistente_devuelve_false() {
+        let mut set = MonitorSet {
+            monitors: vec![m("eDP-1", "Monitor 1", MonitorKind::Primary)],
+        };
+        assert!(!set.set_primary("no-existe"));
+        assert!(set.get("eDP-1").unwrap().is_primary());
+    }
+
+    #[test]
+    fn set_primary_cambiar_de_principal_preserva_un_solo_primario() {
+        let mut set = MonitorSet {
+            monitors: vec![
+                m("eDP-1", "Monitor 1", MonitorKind::Primary),
+                m("HDMI-A-1", "Monitor 2", MonitorKind::Secondary),
+                m("DP-1", "Monitor 3", MonitorKind::Secondary),
+            ],
+        };
+        set.set_primary("DP-1");
+        let primarios = set.iter().filter(|m| m.is_primary()).count();
+        assert_eq!(primarios, 1);
+        assert!(set.get("DP-1").unwrap().is_primary());
+        // Both former targets remain available.
+        assert_eq!(set.secondaries().count(), 2);
     }
 }
