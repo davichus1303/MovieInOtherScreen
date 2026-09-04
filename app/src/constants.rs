@@ -70,6 +70,10 @@ pub mod monitors {
     pub const CSS_CARD: &str = "card";
     /** Label of the button that identifies the screens. */
     pub const LABEL_IDENTIFY_BUTTON: &str = "Identificar pantallas";
+    /** Label of the dropdown that picks the principal monitor. */
+    pub const LABEL_PRIMARY_SELECTOR: &str = "Principal";
+    /** Format of each dropdown entry (kind and label). */
+    pub const PRIMARY_SELECTOR_FORMAT: &str = "{kind} · {label}";
 
     /** Constants for the screen identification overlay. */
     pub mod identify {
@@ -98,6 +102,8 @@ pub mod monitors {
         pub const HINT_MAX_WIDTH_CHARS: i32 = 60;
         /** Spacing of the cards row. */
         pub const CARD_ROW_SPACING: i32 = 8;
+        /** Spacing of the actions row (principal selector + identify). */
+        pub const ACTIONS_ROW_SPACING: i32 = 8;
         /** Width of a monitor card. */
         pub const CARD_WIDTH: i32 = 150;
         /** Height of a monitor card. */
