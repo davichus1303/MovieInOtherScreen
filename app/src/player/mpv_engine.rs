@@ -27,9 +27,7 @@ use crate::logging;
 
 use crate::constants::engine;
 use crate::constants::mpv::*;
-use crate::constants::player::{
-    logs::ENGINE_STARTED, logs::LOAD_PREFIX, messages::INIT_FAIL, LC_NUMERIC,
-};
+use crate::constants::player::{logs::ENGINE_STARTED, logs::LOAD_PREFIX, messages::INIT_FAIL};
 use crate::constants::player_area::volume as volume_limit;
 
 /**
@@ -157,19 +155,13 @@ struct MpvSession {
     paused: bool,
 }
 
-unsafe extern "C" {
-    fn setlocale(category: i32, locale: *const u8) -> *mut u8;
-}
-
 impl MpvSession {
     fn new(events: &Sender<PlayerEvent>) -> mpv::Result<Self> {
         // libmpv exige `LC_NUMERIC` en `"C"`. El ajuste hecho en `main` puede
         // perderse cuando GTK/GLib resetea el locale a las variables de entorno
         // al inicializarse, así que se vuelve a fijar justo aquí, antes de crear
         // el núcleo de mpv (fallaría con MPV_ERROR_NOMEM si no fuera "C").
-        unsafe {
-            setlocale(LC_NUMERIC, b"C\0".as_ptr());
-        }
+        super::ffi::ensure_lc_numeric_c();
 
         let mut builder = mpv::MpvHandlerBuilder::new()?;
         // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
@@ -179,6 +171,10 @@ impl MpvSession {
         // so it never amplifies beyond the system limit.
         builder.set_option(OPT_VOLUME_MAX, volume_limit::MAX)?;
         builder.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
+        // Config y scripts del usuario desactivados: comportamiento
+        // determinista y sin scripts/ytdl/IPC inyectados desde el sistema.
+        builder.set_option(OPT_CONFIG, VALUE_NO)?;
+        builder.set_option(OPT_LOAD_SCRIPTS, VALUE_NO)?;
         // Embeber la salida en un GLArea de la app (Celluloid-style) en lugar
         // de abrir la ventana propia de mpv.
         builder.set_option(OPT_VO, VALUE_VO_LIBMPV)?;

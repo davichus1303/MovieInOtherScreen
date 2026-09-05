@@ -30,10 +30,6 @@ use libadwaita as adw;
 
 use crate::constants::{app::APPLICATION_ID, main_app};
 
-unsafe extern "C" {
-    fn setlocale(category: i32, locale: *const u8) -> *mut u8;
-}
-
 fn main() -> glib::ExitCode {
     install_panic_hook();
     logging::info(main_app::messages::LOG_STARTING.replace("{}", &std::process::id().to_string()));
@@ -66,9 +62,7 @@ fn main() -> glib::ExitCode {
  * In a session with a non-C locale, it must be adjusted before initializing mpv.
  */
 fn init_locale_for_mpv() {
-    unsafe {
-        setlocale(main_app::LC_NUMERIC, b"C\0".as_ptr());
-    }
+    crate::player::ffi::ensure_lc_numeric_c();
 }
 
 /** Returns `true` if execution should continue (Wayland environment). */

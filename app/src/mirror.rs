@@ -27,7 +27,6 @@ use crate::reporting::{self, ErrorKind};
 use crate::constants::mirror;
 use crate::constants::monitors;
 use crate::constants::mpv::*;
-use crate::constants::player;
 
 /** Commands the UI sends to a mirror's synchronized core. */
 #[derive(Debug, Clone, PartialEq)]
@@ -88,14 +87,16 @@ impl MirrorCore {
 /** Mirror core thread: owns the single mpv instance for the mirror. */
 fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
     // libmpv exige LC_NUMERIC en "C" (evita MPV_ERROR_NOMEM).
-    unsafe {
-        setlocale(player::LC_NUMERIC, b"C\0".as_ptr());
-    }
+    crate::player::ffi::ensure_lc_numeric_c();
 
     let mut handler = match mpv::MpvHandlerBuilder::new().and_then(|mut b| {
         b.set_option(OPT_VO, VALUE_VO_LIBMPV)?;
         b.set_option(OPT_AUDIO, VALUE_NO)?;
         b.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
+        // Config y scripts del usuario desactivados: comportamiento
+        // determinista y sin scripts/ytdl/IPC inyectados desde el sistema.
+        b.set_option(OPT_CONFIG, VALUE_NO)?;
+        b.set_option(OPT_LOAD_SCRIPTS, VALUE_NO)?;
         // Aceleración por hardware (estilo VLC): si hay GPU dedicada o
         // integrada se decodifica por hardware, sin depender del códec.
         crate::hwaccel::apply_to(&mut b)?;
@@ -171,11 +172,6 @@ fn run_mirror(rx: Receiver<MirrorCmd>, handle_tx: Sender<usize>) {
         }
     }
     logging::info(mirror::logs::CORE_ENDED);
-}
-
-#[link(name = "c")]
-unsafe extern "C" {
-    fn setlocale(category: i32, locale: *const u8) -> *mut u8;
 }
 
 /** A mirror window: fullscreen over a monitor, with its GLArea. */

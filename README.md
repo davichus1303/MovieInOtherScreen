@@ -79,9 +79,8 @@ O directamente el binario:
 cargo test --workspace --no-default-features
 ```
 
-Los tests cubren: navegación entre vídeos, segmentos de la barra de progreso,
-selección de monitores, selección y persistencia de audio, control de
-reproducción y persistencia de configuración.
+Los tests cubren: detección y selección de monitores y navegación entre
+vídeos.
 
 ## Construir Flatpak
 
@@ -103,12 +102,8 @@ El proyecto es un **workspace Cargo** con dos crates:
 ```text
 └── Cargo.toml        (workspace)
     ├── core/         (lógica de dominio, Rust puro, sin GTK)
-    │   ├── video_list.rs    # vídeos + navegación
-    │   ├── segments.rs      # segmentos de la barra (1-10)
     │   ├── monitors.rs      # detección/selección de monitores
-    │   ├── audio.rs         # selección/persistencia de audio
-    │   ├── player.rs        # control de reproducción (comandos)
-    │   └── config/          # persistencia simple clave=valor
+    │   └── video_list.rs    # vídeos + navegación
     └── app/          (interfaz GTK4 + reproductor libmpv)
         ├── main.rs          # arranque + verificación de Wayland
         ├── wayland.rs       # detección X11/Wayland
@@ -116,10 +111,9 @@ El proyecto es un **workspace Cargo** con dos crates:
         └── player/          # reproductor lógico único sobre libmpv
 ```
 
-Principio rector: **separar** la interfaz, la gestión de vídeos, los
-monitores, el audio, el reproductor, la configuración y la persistencia. La
-UI no contiene lógica de negocio compleja; la reproducción no depende de
-widgets de GTK.
+Principio rector: **separar** la interfaz, la gestión de vídeos y los
+monitores. La UI no contiene lógica de negocio compleja; la reproducción no
+depende de widgets de GTK.
 
 ## Limitaciones conocidas
 

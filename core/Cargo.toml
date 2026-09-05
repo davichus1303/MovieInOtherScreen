@@ -5,6 +5,3 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Lógica de dominio de Movies on Other Screens (Rust puro)"
-
-[dev-dependencies]
-tempfile = { workspace = true }
