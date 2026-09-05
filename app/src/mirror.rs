@@ -205,11 +205,11 @@ impl MirrorWindow {
             return None;
         }
         let video = EmbeddedVideo::with_handle(core.handle);
-        // El espejo se apaga cuando su ventana se destruye, ya DESPUÉS de que
-        // `unrealize` libere el `mpv_render_context`. libmpv exige que
-        // `mpv_render_context_free` preceda a la destrucción del `mpv_handle`;
-        // destruir el handle con el render context vivo provoca el `assert`
-        // `queue_dtor` en `dispatch.c` al cerrar la app.
+        // The mirror shuts down when its window is destroyed, only AFTER
+        // `unrealize` frees the `mpv_render_context`. libmpv requires
+        // `mpv_render_context_free` to precede the `mpv_handle` destruction;
+        // destroying the handle with a live render context triggers the
+        // `queue_dtor` `assert` in `dispatch.c` when closing the app.
         {
             let shutdown_tx = core.tx.clone();
             video.widget().connect_unrealize(move |_| {
@@ -260,9 +260,9 @@ impl MirrorController {
     /**
      * Closes all mirrors.
      *
-     * El hilo de cada espejo se apaga vía el `unrealize` de su GLArea (que ya
-     * liberó el `mpv_render_context`); aquí solo se cierran las ventanas para
-     * garantizar ese orden antes de destruir el `mpv_handle`.
+     * Each mirror thread shuts down through the `unrealize` of its GLArea (which
+     * already freed the `mpv_render_context`); here we only close the windows to
+     * guarantee that order before destroying the `mpv_handle`.
      */
     pub fn clear(&mut self) {
         for (_, w) in self.windows.drain() {

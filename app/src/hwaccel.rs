@@ -114,10 +114,10 @@ pub(crate) fn has_intel_gpu_in(sysfs_drm_dir: &str) -> bool {
 pub fn init() {
     if has_intel_gpu() {
         unsafe {
-            // Equivalente de `setenv(3)` a nivel de proceso, ejecutado en el
-            // hilo único de `main` (sin carreras de datos). Añadimos el enlace
-            // dinámico a la libc y la llamada manual siguiendo el patrón usado
-            // para `setlocale` en este mismo crate.
+            // Process-level equivalent of `setenv(3)`, run on the single `main`
+            // thread (no data races). We add the dynamic libc link and the
+            // manual call following the pattern already used for `setlocale`
+            // in this same crate.
             setenv(
                 LIBVA_DRIVER_NAME_ENV.as_ptr(),
                 LIBVA_DRIVER_NAME_IHD.as_ptr(),

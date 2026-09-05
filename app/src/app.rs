@@ -79,9 +79,9 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
 
     let mirror_state = state.mirror.clone();
     window.connect_close_request(move |_| {
-        // Los espejos y el motor se apagan vía el `unrealize` de sus GLAreas,
-        // ya con el `mpv_render_context` liberado (evita el `assert` de libmpv
-        // `queue_dtor` al destruir los `mpv_handle`).
+        // Mirrors and the engine shut down through the `unrealize` of their
+        // GLAreas, once the `mpv_render_context` is freed (avoids libmpv's
+        // `queue_dtor` `assert` when destroying the `mpv_handle`s).
         mirror_state.borrow_mut().clear();
         glib::Propagation::Proceed
     });
@@ -127,9 +127,9 @@ fn build_player_area(
     video.set_hexpand(true);
     let embedded = crate::player::embed::EmbeddedVideo::new();
     video.set_child(Some(embedded.widget()));
-    // El motor se apaga cuando el GLArea principal se destruye (unrealize), ya
-    // después de liberar su `mpv_render_context`: libmpv exige ese orden antes
-    // de destruir el `mpv_handle` (evita el `assert` `queue_dtor` al cerrar).
+    // The engine shuts down when the main GLArea is destroyed (`unrealize`),
+    // after its `mpv_render_context` is freed: libmpv requires that order
+    // before destroying the `mpv_handle` (avoids the `queue_dtor` `assert`).
     let player_for_shutdown = state.player.clone();
     embedded.widget().connect_unrealize(move |_| {
         let _ = player_for_shutdown.send(PlayerCommand::Shutdown);
