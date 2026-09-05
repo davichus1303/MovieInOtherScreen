@@ -19,6 +19,9 @@ libadwaita = { version = "0.7", features = ["v1_5"], optional = true }
 mpv = { version = "0.2", optional = true }
 serde = { workspace = true, optional = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = ["gui"]
 gui = ["dep:gtk", "dep:libadwaita", "dep:mpv", "dep:serde"]

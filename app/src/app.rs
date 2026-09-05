@@ -77,11 +77,12 @@ pub fn build_main_window(application: &adw::Application) -> adw::ApplicationWind
     // barra de progreso (posición / duración).
     crate::events::bridge_events_to_gtk(ev_rx, timeline);
 
-    let player_cmd = state.player.clone();
     let mirror_state = state.mirror.clone();
     window.connect_close_request(move |_| {
+        // Los espejos y el motor se apagan vía el `unrealize` de sus GLAreas,
+        // ya con el `mpv_render_context` liberado (evita el `assert` de libmpv
+        // `queue_dtor` al destruir los `mpv_handle`).
         mirror_state.borrow_mut().clear();
-        let _ = player_cmd.send(PlayerCommand::Shutdown);
         glib::Propagation::Proceed
     });
 
@@ -126,6 +127,13 @@ fn build_player_area(
     video.set_hexpand(true);
     let embedded = crate::player::embed::EmbeddedVideo::new();
     video.set_child(Some(embedded.widget()));
+    // El motor se apaga cuando el GLArea principal se destruye (unrealize), ya
+    // después de liberar su `mpv_render_context`: libmpv exige ese orden antes
+    // de destruir el `mpv_handle` (evita el `assert` `queue_dtor` al cerrar).
+    let player_for_shutdown = state.player.clone();
+    embedded.widget().connect_unrealize(move |_| {
+        let _ = player_for_shutdown.send(PlayerCommand::Shutdown);
+    });
 
     let controls = player_area::build_controls(&state.player, state.mirror.clone());
 

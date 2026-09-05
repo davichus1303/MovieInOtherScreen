@@ -45,6 +45,9 @@ fn main() -> glib::ExitCode {
     logging::info(main_app::messages::LOG_WAYLAND_OK);
 
     init_locale_for_mpv();
+    // Selecciona el driver VA-API correcto (iHD en Intel) antes de arrancar
+    // cualquier hilo; evita el crash de VP9/AV1 por un fallo del driver legacy.
+    crate::hwaccel::init();
     let application = adw::Application::builder()
         .application_id(APPLICATION_ID)
         .build();
