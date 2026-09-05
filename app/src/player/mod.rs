@@ -29,6 +29,13 @@ pub enum PlayerCommand {
     Unload,
     /** Seeks to a position in seconds. */
     Seek(f64),
+    /**
+     * Sets the playback volume (0-100). Software volume: independent of the
+     * system mixer and capped so it never exceeds the system limits.
+     */
+    Volume(f64),
+    /** Mutes or unmutes the audio. */
+    Mute(bool),
     /** Requests thread termination. */
     Shutdown,
 }
