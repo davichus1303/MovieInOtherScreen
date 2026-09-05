@@ -25,10 +25,26 @@
   },
   "modules": [
     {
+      "name": "dav1d",
+      "buildsystem": "meson",
+      "config-opts": [
+        "-Ddefault_library=shared",
+        "-Denable_tools=false",
+        "-Denable_tests=false"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://download.videolan.org/pub/videolan/dav1d/1.4.1/dav1d-1.4.1.tar.xz",
+          "sha256": "8d407dd5fe7986413c937b14e67f36aebd06e1fa5cfec679d10e548476f2d5f8"
+        }
+      ]
+    },
+    {
       "name": "ffmpeg",
       "buildsystem": "simple",
       "build-commands": [
-        "./configure --prefix=${FLATPAK_DEST} --enable-shared --disable-static --disable-programs --disable-doc --disable-network --enable-pic",
+        "./configure --prefix=${FLATPAK_DEST} --enable-shared --disable-static --disable-programs --disable-doc --disable-network --enable-pic --enable-libdav1d",
         "make -j${FLATPAK_BUILDER_N_JOBS}",
         "make install"
       ],

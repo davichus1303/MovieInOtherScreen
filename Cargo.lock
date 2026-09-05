@@ -514,6 +514,7 @@ dependencies = [
  "mos-core",
  "mpv",
  "serde",
+ "tempfile",
 ]
 
 [[package]]

@@ -205,6 +205,17 @@ impl MirrorWindow {
             return None;
         }
         let video = EmbeddedVideo::with_handle(core.handle);
+        // The mirror shuts down when its window is destroyed, only AFTER
+        // `unrealize` frees the `mpv_render_context`. libmpv requires
+        // `mpv_render_context_free` to precede the `mpv_handle` destruction;
+        // destroying the handle with a live render context triggers the
+        // `queue_dtor` `assert` in `dispatch.c` when closing the app.
+        {
+            let shutdown_tx = core.tx.clone();
+            video.widget().connect_unrealize(move |_| {
+                let _ = shutdown_tx.send(MirrorCmd::Shutdown);
+            });
+        }
 
         let window = gtk::ApplicationWindow::builder()
             .application(application)
@@ -246,10 +257,15 @@ impl MirrorController {
         }
     }
 
-    /** Closes all mirrors. */
+    /**
+     * Closes all mirrors.
+     *
+     * Each mirror thread shuts down through the `unrealize` of its GLArea (which
+     * already freed the `mpv_render_context`); here we only close the windows to
+     * guarantee that order before destroying the `mpv_handle`.
+     */
     pub fn clear(&mut self) {
         for (_, w) in self.windows.drain() {
-            w.core.send(MirrorCmd::Shutdown);
             w.close();
         }
     }
@@ -257,7 +273,6 @@ impl MirrorController {
     /** Closes the mirror for a specific monitor (e.g. when deselected). */
     pub fn remove(&mut self, id: &str) {
         if let Some(w) = self.windows.remove(id) {
-            w.core.send(MirrorCmd::Shutdown);
             w.close();
         }
     }

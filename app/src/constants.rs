@@ -41,12 +41,40 @@ pub mod hwaccel {
     pub const DRM_DEV_DIR: &str = "/dev/dri";
     /** Prefix of the DRM render node files. */
     pub const DRM_RENDER_NODE_PREFIX: &str = "renderD";
+    /** Sysfs directory reporting the DRM cards and their attributes. */
+    pub const SYSFS_DRM_DIR: &str = "/sys/class/drm";
+    /** Subdirectory of a DRM card in sysfs holding its hardware attributes. */
+    pub const DRM_DEVICE_SUBDIR: &str = "device";
+    /** Sysfs `vendor` file exposing the PCI vendor id of a GPU. */
+    pub const SYSFS_VENDOR_FILE: &str = "vendor";
+    /** PCI vendor id of Intel GPUs (as reported by sysfs). */
+    pub const INTEL_VENDOR_ID: &str = "0x8086";
+    /** Environment variable through which libva/VA-API selects its driver. */
+    pub const LIBVA_DRIVER_NAME_ENV: &str = "LIBVA_DRIVER_NAME";
+    /** Name of the modern Intel VA-API driver (supports VP8/VP9/AV1). */
+    pub const LIBVA_DRIVER_NAME_IHD: &str = "iHD";
     /** mpv option that controls hardware decoding. */
     pub const OPT_HWDEC: &str = "hwdec";
     /** Value of `hwdec` that enables auto-detected hardware decoding. */
     pub const OPT_HWDEC_AUTO: &str = "auto";
     /** Value of `hwdec` that disables hardware decoding. */
     pub const OPT_HWDEC_NO: &str = "no";
+    /** mpv option restricting which codecs may use hardware decoding. */
+    pub const OPT_HWDEC_CODECS: &str = "hwdec-codecs";
+    /**
+     * Codecs allowed to use hardware decoding.
+     *
+     * `AV1` is deliberately excluded: on several Intel iGPUs the VA-API
+     * (`iHD`) driver fails to decode AV1 mid-stream (internal decoding error
+     * 23), and mpv segfaults instead of falling back to software. AV1 is
+     * therefore decoded by software (see [`DECODER_DAV1D`]). The rest of the
+     * common hardware codecs keep acceleration.
+     */
+    pub const HWDEC_CODECS_NO_AV1: &str = "h264,hevc,mpeg2,mpeg4,vp8,vp9,vc1";
+    /** mpv option with the video decoder priority list. */
+    pub const OPT_VD: &str = "vd";
+    /** VideoLAN's `libdav1d` AV1 decoder (fastest AV1 software decoder). */
+    pub const DECODER_DAV1D: &str = "libdav1d";
 }
 
 pub mod monitors {
