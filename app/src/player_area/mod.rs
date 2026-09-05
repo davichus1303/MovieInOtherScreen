@@ -248,7 +248,7 @@ fn build_volume_control(
         mute_button.connect_clicked(move |_| {
             let mut s = state.borrow_mut();
             if s.muted {
-                // Reactivar: restaurar el volumen previo.
+                // Reactivate: restore the previous volume.
                 s.muted = false;
                 s.suppress = true;
                 scale.set_value(s.volume);
@@ -256,7 +256,7 @@ fn build_volume_control(
                 let _ = send.send(crate::player::PlayerCommand::Mute(false));
                 let _ = send.send(crate::player::PlayerCommand::Volume(s.volume));
             } else {
-                // Silenciar: el slider baja a 0, el volumen se conserva.
+                // Mute: the slider drops to 0 while the volume is kept.
                 s.muted = true;
                 s.suppress = true;
                 scale.set_value(vol::MIN);
@@ -267,7 +267,7 @@ fn build_volume_control(
         });
     }
 
-    // Slider: volumen en vivo; si está silenciado y se arrastra, se reactiva.
+    // Live volume; dragging while muted reactivates the sound.
     {
         let state = state.clone();
         let icon = mute_button.clone();

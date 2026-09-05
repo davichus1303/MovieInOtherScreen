@@ -175,8 +175,8 @@ impl MpvSession {
         // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
         // (dedicada o integrada), sin depender del códec del vídeo.
         crate::hwaccel::apply_to(&mut builder)?;
-        // Volumen software (independiente del mezclador del sistema), tope 100%
-        // para no amplificar más allá del límite del sistema.
+        // Software volume (independent of the system mixer), capped at 100%
+        // so it never amplifies beyond the system limit.
         builder.set_option(OPT_VOLUME_MAX, volume_limit::MAX)?;
         builder.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
         // Embeber la salida en un GLArea de la app (Celluloid-style) en lugar
