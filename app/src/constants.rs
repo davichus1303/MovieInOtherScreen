@@ -184,6 +184,39 @@ pub mod player_area {
         pub const ICON_STOP: &str = "⏹";
     }
 
+    /**
+     * Volume control: software volume (independent of the system mixer),
+     * capped at 100% so it never exceeds the system limits.
+     */
+    pub mod volume {
+        /** Minimum volume (silence). */
+        pub const MIN: f64 = 0.0;
+        /** Maximum volume: no amplification beyond the system limit. */
+        pub const MAX: f64 = 100.0;
+        /** Step of the volume slider. */
+        pub const STEP: f64 = 1.0;
+        /** Default volume on startup. */
+        pub const DEFAULT: f64 = 100.0;
+        /** Width (px) of the volume slider. */
+        pub const SCALE_WIDTH_REQUEST: i32 = 110;
+        /** Volume below which the "low" speaker icon applies. */
+        pub const ICON_LOW_THRESHOLD: f64 = 33.0;
+        /** Volume below which the "medium" speaker icon applies. */
+        pub const ICON_MEDIUM_THRESHOLD: f64 = 66.0;
+        /** Symbolic icon of a muted speaker. */
+        pub const ICON_MUTED: &str = "audio-volume-muted-symbolic";
+        /** Symbolic icon of a low-volume speaker. */
+        pub const ICON_LOW: &str = "audio-volume-low-symbolic";
+        /** Symbolic icon of a medium-volume speaker. */
+        pub const ICON_MEDIUM: &str = "audio-volume-medium-symbolic";
+        /** Symbolic icon of a high-volume speaker. */
+        pub const ICON_HIGH: &str = "audio-volume-high-symbolic";
+        /** Tooltip of the mute button. */
+        pub const TOOLTIP_MUTE_BUTTON: &str = "Silenciar o reactivar el sonido";
+        /** Tooltip of the volume slider. */
+        pub const TOOLTIP_SCALE: &str = "Volumen";
+    }
+
     pub mod layout {
         /** Spacing of the timeline row. */
         pub const ROW_SPACING: i32 = 8;
@@ -215,6 +248,12 @@ pub mod mpv {
     pub const VALUE_VO_LIBMPV: &str = "libmpv";
     /** mpv option enabling/disabling audio. */
     pub const OPT_AUDIO: &str = "audio";
+    /** mpv property with the playback volume (0-100, software). */
+    pub const PROP_VOLUME: &str = "volume";
+    /** mpv property toggling audio mute. */
+    pub const PROP_MUTE: &str = "mute";
+    /** mpv option capping the maximum playback volume. */
+    pub const OPT_VOLUME_MAX: &str = "volume-max";
     /** mpv command to load/switch a file. */
     pub const CMD_LOADFILE: &str = "loadfile";
     /** mpv command to seek. */

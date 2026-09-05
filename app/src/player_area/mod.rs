@@ -186,5 +186,129 @@ pub fn build_controls(
         controls.append(&button);
     }
 
+    controls.append(&build_volume_control(player));
+
     controls
+}
+
+/** Mutable state of the volume control (kept only in the UI). */
+struct VolumeUiState {
+    /** Last (or current) volume; restored when unmuting. */
+    volume: f64,
+    muted: bool,
+    /** True while setting the slider programmatically (ignore its signal). */
+    suppress: bool,
+}
+
+/**
+ * Builds the volume control: a mute button plus a compact slider.
+ *
+ * Behavior is YouTube-like but rendered in GNOME style (symbolic speaker icon
+ * and an adwaita slider):
+ * - Clicking the speaker toggles mute (the "previous" volume is kept).
+ * - The icon reflects the level: muted / low / medium / high.
+ * - Dragging the slider while muted unmutes at the new level.
+ * - It drives mpv's software volume (0-100), independent of the system mixer
+ *   and capped so it never exceeds the system limits.
+ */
+fn build_volume_control(
+    player: &std::sync::mpsc::Sender<crate::player::PlayerCommand>,
+) -> gtk::Box {
+    use crate::constants::player_area::volume as vol;
+
+    let widget = gtk::Box::new(
+        gtk::Orientation::Horizontal,
+        player_area::layout::CONTROLS_SPACING,
+    );
+    widget.set_halign(gtk::Align::Center);
+
+    let state = Rc::new(RefCell::new(VolumeUiState {
+        volume: vol::DEFAULT,
+        muted: false,
+        suppress: false,
+    }));
+
+    let mute_button = gtk::Button::new();
+    mute_button.set_icon_name(vol::ICON_HIGH);
+    mute_button.set_tooltip_text(Some(vol::TOOLTIP_MUTE_BUTTON));
+
+    let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, vol::MIN, vol::MAX, vol::STEP);
+    scale.set_draw_value(false);
+    scale.set_valign(gtk::Align::Center);
+    scale.set_width_request(vol::SCALE_WIDTH_REQUEST);
+    scale.set_tooltip_text(Some(vol::TOOLTIP_SCALE));
+    scale.set_value(vol::DEFAULT);
+
+    // Mute toggle. While muted the slider shows 0 but the volume is kept.
+    {
+        let state = state.clone();
+        let scale = scale.clone();
+        let icon = mute_button.clone();
+        let send = player.clone();
+        mute_button.connect_clicked(move |_| {
+            let mut s = state.borrow_mut();
+            if s.muted {
+                // Reactivar: restaurar el volumen previo.
+                s.muted = false;
+                s.suppress = true;
+                scale.set_value(s.volume);
+                s.suppress = false;
+                let _ = send.send(crate::player::PlayerCommand::Mute(false));
+                let _ = send.send(crate::player::PlayerCommand::Volume(s.volume));
+            } else {
+                // Silenciar: el slider baja a 0, el volumen se conserva.
+                s.muted = true;
+                s.suppress = true;
+                scale.set_value(vol::MIN);
+                s.suppress = false;
+                let _ = send.send(crate::player::PlayerCommand::Mute(true));
+            }
+            set_volume_icon(&icon, scale.value(), s.muted);
+        });
+    }
+
+    // Slider: volumen en vivo; si está silenciado y se arrastra, se reactiva.
+    {
+        let state = state.clone();
+        let icon = mute_button.clone();
+        let send = player.clone();
+        scale.connect_value_changed(move |scale| {
+            let mut s = state.borrow_mut();
+            if s.suppress {
+                return;
+            }
+            let v = scale.value().clamp(vol::MIN, vol::MAX);
+            s.volume = v;
+            if s.muted {
+                if v > vol::MIN {
+                    s.muted = false;
+                    let _ = send.send(crate::player::PlayerCommand::Mute(false));
+                } else {
+                    set_volume_icon(&icon, v, true);
+                    return;
+                }
+            }
+            let _ = send.send(crate::player::PlayerCommand::Volume(v));
+            set_volume_icon(&icon, v, s.muted);
+        });
+    }
+
+    widget.append(&mute_button);
+    widget.append(&scale);
+    widget
+}
+
+/** Picks the speaker icon that matches the given volume and mute state. */
+fn set_volume_icon(button: &gtk::Button, volume: f64, muted: bool) {
+    use crate::constants::player_area::volume as vol;
+    let icon = if muted || volume <= vol::MIN {
+        vol::ICON_MUTED
+    } else if volume < vol::ICON_LOW_THRESHOLD {
+        vol::ICON_LOW
+    } else if volume < vol::ICON_MEDIUM_THRESHOLD {
+        vol::ICON_MEDIUM
+    } else {
+        vol::ICON_HIGH
+    };
+    button.set_icon_name(icon);
 }

@@ -30,6 +30,7 @@ use crate::constants::mpv::*;
 use crate::constants::player::{
     logs::ENGINE_STARTED, logs::LOAD_PREFIX, messages::INIT_FAIL, LC_NUMERIC,
 };
+use crate::constants::player_area::volume as volume_limit;
 
 /**
  * Shared libmpv handle with the render layer (UI GLArea).
@@ -135,6 +136,8 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
             Ok(PlayerCommand::Stop) => player.stop(),
             Ok(PlayerCommand::Unload) => player.unload(),
             Ok(PlayerCommand::Seek(seconds)) => player.seek(seconds),
+            Ok(PlayerCommand::Volume(value)) => player.set_volume(value),
+            Ok(PlayerCommand::Mute(muted)) => player.set_muted(muted),
             Ok(PlayerCommand::Shutdown) => break,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -172,6 +175,9 @@ impl MpvSession {
         // Aceleración por hardware (estilo VLC): se activa si hay cualquier GPU
         // (dedicada o integrada), sin depender del códec del vídeo.
         crate::hwaccel::apply_to(&mut builder)?;
+        // Volumen software (independiente del mezclador del sistema), tope 100%
+        // para no amplificar más allá del límite del sistema.
+        builder.set_option(OPT_VOLUME_MAX, volume_limit::MAX)?;
         builder.set_option(OPT_KEEP_OPEN, VALUE_YES)?;
         // Embeber la salida en un GLArea de la app (Celluloid-style) en lugar
         // de abrir la ventana propia de mpv.
@@ -252,6 +258,25 @@ impl MpvSession {
     fn seek_to(&mut self, seconds: f64) -> mpv::Result<()> {
         let arg = format!("{seconds}");
         self.handler.command(&[CMD_SEEK, &arg, SEEK_MODE_ABSOLUTE])
+    }
+
+    /**
+     * Sets the playback volume, clamped to [0, 100]. It is mpv's software
+     * volume, so it does not touch the system mixer and never exceeds the
+     * `volume-max` cap set at configuration time.
+     */
+    fn set_volume(&mut self, volume: f64) {
+        let v = volume.clamp(volume_limit::MIN, volume_limit::MAX);
+        if let Err(err) = self.handler.set_property(PROP_VOLUME, v) {
+            self.report_error(err);
+        }
+    }
+
+    /** Mutes or unmutes the audio. */
+    fn set_muted(&mut self, muted: bool) {
+        if let Err(err) = self.handler.set_property(PROP_MUTE, muted) {
+            self.report_error(err);
+        }
     }
 
     fn set_paused(&mut self, paused: bool) {
