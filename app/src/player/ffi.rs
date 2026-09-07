@@ -10,6 +10,7 @@
  */
 
 use std::os::raw::{c_char, c_int, c_void};
+use std::sync::Once;
 
 #[allow(non_camel_case_types)]
 pub type mpv_handle = *mut c_void;
@@ -120,6 +121,28 @@ extern "C" {
     pub fn eglGetProcAddress(name: *const c_char) -> *mut c_void;
     /** Resolves standard functions/extensions from `libGL` (GLX loader). */
     pub fn glXGetProcAddressARB(name: *const c_char) -> *mut c_void;
+}
+
+/**
+ * Forces `LC_NUMERIC` to `"C"` exactly once per process (libmpv requirement).
+ *
+ * libmpv fails to create a core with `MPV_ERROR_NOMEM` unless `LC_NUMERIC` is
+ * `"C"`. GTK/GLib may reset the locale to the environment after init, so the
+ * engine and every mirror re-assert it right before creating their core.
+ *
+ * `setlocale` is process-global and NOT thread-safe (engine and mirror threads
+ * run concurrently), so the call is guarded by a `Once`: it runs a single time
+ * whichever thread reaches it first, and the rest only observe the side effect.
+ */
+pub fn ensure_lc_numeric_c() {
+    static LC_NUMERIC_ONCE: Once = Once::new();
+    LC_NUMERIC_ONCE.call_once(|| unsafe {
+        setlocale(crate::constants::player::LC_NUMERIC, b"C\0".as_ptr());
+    });
+}
+
+unsafe extern "C" {
+    fn setlocale(category: i32, locale: *const u8) -> *mut u8;
 }
 
 /**

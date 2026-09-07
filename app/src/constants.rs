@@ -276,6 +276,10 @@ pub mod mpv {
     pub const VALUE_VO_LIBMPV: &str = "libmpv";
     /** mpv option enabling/disabling audio. */
     pub const OPT_AUDIO: &str = "audio";
+    /** mpv option disabling the user's `mpv.conf` (deterministic embedding). */
+    pub const OPT_CONFIG: &str = "config";
+    /** mpv option disabling auto-loaded scripts (no ytdl/IPC from user files). */
+    pub const OPT_LOAD_SCRIPTS: &str = "load-scripts";
     /** mpv property with the playback volume (0-100, software). */
     pub const PROP_VOLUME: &str = "volume";
     /** mpv property toggling audio mute. */
@@ -421,8 +425,6 @@ pub mod logging {
 }
 
 pub mod main_app {
-    /** `LC_NUMERIC` locale category (POSIX). */
-    pub const LC_NUMERIC: i32 = 1;
     /** Exit code used when the Wayland requirement is not met. */
     pub const EXIT_CODE_REQUIREMENT: i32 = 1;
     /** Fallback message of an unknown panic payload. */
