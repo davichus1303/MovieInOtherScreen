@@ -22,6 +22,14 @@ use std::sync::mpsc::{Receiver, Sender};
 pub enum PlayerCommand {
     /** Loads a new video by its path. */
     Load(String),
+    /**
+     * Captures the current frame into `screenshot_path` (crossfade layer) and
+     * then switches to `path`, like [`PlayerCommand::Load`].
+     */
+    LoadScreenshot {
+        path: String,
+        screenshot_path: String,
+    },
     Play,
     Pause,
     Stop,

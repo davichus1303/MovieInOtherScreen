@@ -160,9 +160,16 @@ fn connect_video_list(
         };
         // El crossfade debe notificarse ANTES de que el motor cambie de
         // archivo: necesita leer la posición del vídeo que aún se reproduce.
-        crate::crossfade::CrossfadeController::notify_play(&crossfade_for_row, &path);
+        let command =
+            match crate::crossfade::CrossfadeController::notify_play(&crossfade_for_row, &path) {
+                // Crossfade activo: el motor captura el último fotograma del
+                // vídeo anterior y después cambia de archivo.
+                Some(cmd) => cmd,
+                // Sin crossfade: cambio directo (comportamiento original).
+                None => crate::player::PlayerCommand::Load(path.clone()),
+            };
         // Use the cloned player, mirror, monitors
-        let _ = player_for_row.send(crate::player::PlayerCommand::Load(path.clone()));
+        let _ = player_for_row.send(command);
         let st = AppState {
             monitors: monitors.clone(),
             mirror: mirror_for_row.clone(),

@@ -2,22 +2,30 @@
  * Crossfade transition between videos.
  *
  * The engine switches files with `loadfile` (a hard cut). When enabled, each
- * change to a new video spawns a short-lived "outgoing" core: it keeps the
- * previous video (image and audio) on top of the player while both fade away
- * over [`crate::constants::crossfade::DURATION_SECS`], revealing the new video
- * that the engine is already playing underneath.
+ * change to a new video:
  *
- * Reuses the strategy of the mirrors (`crate::mirror`): one extra mpv core per
- * spawned layer, an `mpv_render_context` embedded in a `GtkGLArea`, and an
- * explicit channel back to the core thread. The incoming video is NOT loaded
- * again: it stays on the main engine core, whose existing fade-in complements
- * this crossfade (outgoing audio ramps down while incoming ramps up, DJ style).
+ * 1. The engine captures the last frame of the previous video into a PNG
+ *    right before the switch, so the frame is the one being shown.
+ * 2. A short-lived AUDIO-only mpv core keeps the previous audio playing from
+ *    the exact switch position while its volume fades to zero.
+ * 3. The captured frame is shown as a plain `gtk::Picture` (2D, no GL) on top
+ *    of the player and its opacity is animated to 0 over
+ *    [`crate::constants::crossfade::DURATION_SECS`], revealing the new video
+ *    that the engine is already playing underneath.
+ *
+ * The outgoing layer is deliberately NOT a `GtkGLArea`: two live GL widgets
+ * stacked in the same window make GTK4 repaint both continuously in one shared
+ * surface, which produces persistent flicker.* A 2D image composited with
+ * widget opacity has no GL race, and the continuing audio preserves the "DJ"
+ * feel. The incoming video stays on the main engine core, whose existing
+ * fade-in complements the crossfade.
  *
  * The main player, the mirrors, the timeline and the volume controls are not
  * touched; this module only adds the visual layer and the checkbox state.
  */
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -27,57 +35,46 @@ use gtk::prelude::*;
 use crate::constants::crossfade as cfg;
 use crate::constants::mpv as mpv_const;
 use crate::logging;
-use crate::player::embed::EmbeddedVideo;
 use crate::player::ffi;
+use crate::player::PlayerCommand;
 use crate::reporting::{self, ErrorKind};
 
-/** Commands the UI sends to an outgoing ("fade out") core. */
+/** Commands the UI sends to the outgoing (audio) core. */
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum FadeCmd {
-    /** Sets the playback volume of the outgoing video (0-100). */
+    /** Sets the playback volume of the outgoing audio (0-100). */
     Volume(f64),
     /** Terminates the core. */
     Shutdown,
 }
 
 /**
- * Short-lived mpv core that keeps rendering the previous video during the
- * transition. Lives on its own thread, with sound (`audio` enabled), with
- * embedded output (`vo=libmpv`).
+ * Short-lived AUDIO-only mpv core: keeps the previous audio playing during the
+ * transition on its own thread, without any video output. The image comes from
+ * the `gtk::Picture` layer, so no render context/GtkGLArea is needed.
  */
 struct FadeCore {
     tx: Sender<FadeCmd>,
-    /** Raw handle for creating the `mpv_render_context` on the UI thread. */
-    handle: ffi::mpv_handle,
 }
 
 impl FadeCore {
     /**
-     * Creates the core thread, loads `path` at `position` and returns it.
-     *
-     * `volume`/`muted` mirror the state of the main engine so the outgoing
-     * video starts at the same loudness the user was hearing.
+     * Creates the core thread and loads `path` at `position`, mirroring the
+     * engine's `volume`/`muted` so the outgoing audio starts at the same
+     * loudness the user was hearing.
      */
     fn spawn(path: &str, position: f64, volume: f64, muted: bool) -> Option<Self> {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<FadeCmd>();
-        let (handle_tx, handle_rx) = std::sync::mpsc::channel::<usize>();
         let path = path.to_string();
         if std::thread::Builder::new()
             .name(cfg::THREAD_NAME.into())
-            .spawn(move || run_fade_core(cmd_rx, handle_tx, &path, position, volume, muted))
+            .spawn(move || run_fade_core(cmd_rx, &path, position, volume, muted))
             .is_err()
         {
             reporting::report(ErrorKind::Player, cfg::messages::THREAD_CREATE_FAIL);
             return None;
         }
-        let handle = match handle_rx.recv() {
-            Ok(h) => h as ffi::mpv_handle,
-            Err(_) => {
-                reporting::report(ErrorKind::Player, cfg::messages::CORE_TERMINATED);
-                return None;
-            }
-        };
-        Some(Self { tx: cmd_tx, handle })
+        Some(Self { tx: cmd_tx })
     }
 
     fn volume(&self, volume: f64) {
@@ -85,27 +82,24 @@ impl FadeCore {
     }
 }
 
-/** Outgoing core thread: plays the previous file while the UI fades it out. */
-fn run_fade_core(
-    rx: Receiver<FadeCmd>,
-    handle_tx: Sender<usize>,
-    path: &str,
-    position: f64,
-    volume: f64,
-    muted: bool,
-) {
+/** Outgoing core thread: plays the previous audio until told to stop. */
+fn run_fade_core(rx: Receiver<FadeCmd>, path: &str, position: f64, volume: f64, muted: bool) {
     crate::player::ffi::ensure_lc_numeric_c();
 
     let mut handler = match mpv::MpvHandlerBuilder::new().and_then(|mut b| {
-        b.set_option(mpv_const::OPT_VO, mpv_const::VALUE_VO_LIBMPV)?;
+        // Solo audio: el vídeo se sustituye por la imagen capturada, así que
+        // no se pide salida de vídeo ni render context para este núcleo.
+        b.set_option(mpv_const::OPT_VIDEO, mpv_const::VALUE_NO)?;
         b.set_option(mpv_const::OPT_KEEP_OPEN, mpv_const::VALUE_YES)?;
         // Config y scripts del usuario desactivados: comportamiento
         // determinista y sin scripts/ytdl/IPC inyectados desde el sistema.
         b.set_option(mpv_const::OPT_CONFIG, mpv_const::VALUE_NO)?;
         b.set_option(mpv_const::OPT_LOAD_SCRIPTS, mpv_const::VALUE_NO)?;
-        // Aceleración por hardware (estilo VLC): si hay GPU dedicada o
-        // integrada se decodifica por hardware, sin depender del códec.
-        crate::hwaccel::apply_to(&mut b)?;
+        // Mismo tope de volumen que el motor (sin amplificación).
+        b.set_option(
+            mpv_const::OPT_VOLUME_MAX,
+            crate::constants::player_area::volume::MAX,
+        )?;
         b.build()
     }) {
         Ok(h) => h,
@@ -118,7 +112,6 @@ fn run_fade_core(
             return;
         }
     };
-    let _ = handle_tx.send(handler.raw() as usize);
     logging::info(cfg::logs::CORE_CREATED);
 
     // Cargar pausado: el `seek` y el volumen se aplican en `FileLoaded`
@@ -166,9 +159,14 @@ fn run_fade_core(
 struct ActiveFade {
     /** Identifies this fade so stale timers are discarded. */
     id: u64,
-    core: FadeCore,
-    /** Outgoing video layer (removed from the stage when the fade ends). */
-    widget: gtk::GLArea,
+    /** Outgoing audio core (volume fades to 0). */
+    audio: FadeCore,
+    /** 2D layer shown over the player (fades out by opacity). */
+    layer: gtk::Picture,
+    /** Path of the captured frame; deleted when the fade ends. */
+    screenshot_path: String,
+    /** Whether `layer` already shows the captured frame. */
+    image_loaded: bool,
     /** Loudness captured from the engine when the fade started. */
     start_volume: f64,
     /** Milliseconds elapsed since the fade started. */
@@ -212,28 +210,40 @@ impl CrossfadeController {
      * Notifies the controller that the player is about to switch to `new_path`.
      *
      * Must be invoked BEFORE the engine is told to load, so the engine still
-     * reports the old video's position (`time-pos`). If a crossfade can apply
-     * (enabled, previous video present and different, playback active) the
-     * outgoing layer is spawned and animated.
+     * reports the old video's position and can capture its last frame. When a
+     * crossfade can apply (enabled, previous video present and different,
+     * playback active) the outgoing layer is spawned and the returned command
+     * tells the engine to also capture the screenshot before loading; `None`
+     * lets the caller keep its original load flow.
      */
-    pub fn notify_play(shared: &Rc<RefCell<Self>>, new_path: &str) {
+    pub fn notify_play(shared: &Rc<RefCell<Self>>, new_path: &str) -> Option<PlayerCommand> {
         let mut this = shared.borrow_mut();
         let previous = this.current_path.replace(new_path.to_string());
         if !this.enabled {
-            return;
+            return None;
         }
-        let Some(old_path) = previous else { return };
+        let old_path = previous?;
         if old_path == new_path {
-            return;
+            return None;
         }
-        let Some(position) = crate::mirror::main_time_pos() else {
-            return;
-        };
+        let position = crate::mirror::main_time_pos()?;
         let volume = read_double_property(mpv_const::PROP_VOLUME)
             .unwrap_or(crate::constants::player_area::volume::DEFAULT);
         let muted = read_bool_property(mpv_const::PROP_MUTE).unwrap_or(false);
+        let screenshot = screenshot_path();
         drop(this);
-        Self::start_fade(shared, &old_path, position, volume, muted);
+        Self::start_fade(
+            shared,
+            &old_path,
+            position,
+            volume,
+            muted,
+            screenshot.clone(),
+        );
+        Some(PlayerCommand::LoadScreenshot {
+            path: new_path.to_string(),
+            screenshot_path: screenshot,
+        })
     }
 
     /** Starts the fading layer and schedules its animation. */
@@ -243,6 +253,7 @@ impl CrossfadeController {
         position: f64,
         volume: f64,
         muted: bool,
+        screenshot: String,
     ) {
         let mut this = shared.borrow_mut();
         // Temporizador y transición en curso: la nueva operación los supera
@@ -254,28 +265,22 @@ impl CrossfadeController {
         let fade_id = this.next_fade_id;
         this.next_fade_id += 1;
 
-        let Some(core) = FadeCore::spawn(old_path, position, volume, muted) else {
+        let Some(audio) = FadeCore::spawn(old_path, position, volume, muted) else {
             return;
         };
-        let video = EmbeddedVideo::with_handle(core.handle);
-        let widget = video.widget().clone();
-        widget.set_hexpand(true);
-        widget.set_vexpand(true);
+        let layer = gtk::Picture::new();
+        layer.set_hexpand(true);
+        layer.set_vexpand(true);
         // La capa superior no debe interceptar la interacción con el resto.
-        widget.set_can_target(false);
-        // Empieza totalmente opaca (cubre el recién cargado) y se desvanece.
-        widget.set_opacity(1.0);
-        {
-            let shutdown_tx = core.tx.clone();
-            widget.connect_unrealize(move |_| {
-                let _ = shutdown_tx.send(FadeCmd::Shutdown);
-            });
-        }
-        this.stage.add_overlay(&widget);
+        layer.set_can_target(false);
+        layer.set_opacity(1.0);
+        this.stage.add_overlay(&layer);
         this.active = Some(ActiveFade {
             id: fade_id,
-            core,
-            widget,
+            audio,
+            layer,
+            screenshot_path: screenshot,
+            image_loaded: false,
             start_volume: volume,
             elapsed_ms: 0,
         });
@@ -303,9 +308,17 @@ impl CrossfadeController {
         let duration_ms = cfg::DURATION_SECS * 1000.0;
         let progress = (fade.elapsed_ms as f64 / duration_ms).clamp(0.0, 1.0);
 
-        // Vídeo: opacidad 1.0 -> 0.0. Audio: volumen de salida -> 0.
-        fade.widget.set_opacity(1.0 - progress);
-        fade.core.volume(fade.start_volume * (1.0 - progress));
+        // La imagen se muestra en cuanto el motor termina el screenshot
+        // (normalmente en el primer tick; el audio ya está sonando).
+        if !fade.image_loaded && Path::new(&fade.screenshot_path).exists() {
+            fade.layer.set_filename(Some(&fade.screenshot_path));
+            fade.image_loaded = true;
+            logging::info(cfg::logs::FADE_IMAGE_SET);
+        }
+
+        // Imagen: opacidad 1.0 -> 0.0. Audio: volumen de salida -> 0.
+        fade.layer.set_opacity(1.0 - progress);
+        fade.audio.volume(fade.start_volume * (1.0 - progress));
 
         if progress >= 1.0 {
             let fade = self.active.take().expect("fade activo confirmado");
@@ -324,15 +337,24 @@ impl CrossfadeController {
     }
 
     /**
-     * Tears the layer down: removes it from the stage (fires `unrealize`,
-     * which already sends `Shutdown` to the core) and resends the command as
-     * a safety net before the core is dropped.
+     * Tears the layer down: removes the image from the stage, stops the audio
+     * core and deletes the temporary screenshot.
      */
     fn finish_fade(&mut self, fade: ActiveFade) {
-        self.stage.remove_overlay(&fade.widget);
-        let _ = fade.core.tx.send(FadeCmd::Shutdown);
+        self.stage.remove_overlay(&fade.layer);
+        let _ = fade.audio.tx.send(FadeCmd::Shutdown);
+        // Limpieza del screenshot temporal (mejor esfuerzo).
+        let _ = std::fs::remove_file(&fade.screenshot_path);
         logging::info(cfg::logs::FADE_ENDED);
     }
+}
+
+/** Path of the temporary screenshot used as the fade-out frame. */
+fn screenshot_path() -> String {
+    std::env::temp_dir()
+        .join(cfg::SCREENSHOT_FILE.replace("{pid}", &std::process::id().to_string()))
+        .to_string_lossy()
+        .into_owned()
 }
 
 /** Reads a double mpv property from the main engine's core. */
