@@ -10,7 +10,6 @@
  */
 
 use std::os::raw::{c_char, c_int, c_void};
-use std::sync::Once;
 
 #[allow(non_camel_case_types)]
 pub type mpv_handle = *mut c_void;
@@ -124,21 +123,24 @@ extern "C" {
 }
 
 /**
- * Forces `LC_NUMERIC` to `"C"` exactly once per process (libmpv requirement).
+ * Forces `LC_NUMERIC` to `"C"` (libmpv requirement).
  *
- * libmpv fails to create a core with `MPV_ERROR_NOMEM` unless `LC_NUMERIC` is
- * `"C"`. GTK/GLib may reset the locale to the environment after init, so the
- * engine and every mirror re-assert it right before creating their core.
+ * libmpv fails to create a core unless `LC_NUMERIC` is `"C"` (it aborts with
+ * the "Non-C locale detected" fatal message). GTK/GLib resets the locale to
+ * the environment (`setlocale(LC_ALL, "")`) when it initializes, which happens
+ * after `main`, so it must be re-asserted right before **every** `mpv_create`
+ * (main engine, mirrors and crossfade cores).
  *
- * `setlocale` is process-global and NOT thread-safe (engine and mirror threads
- * run concurrently), so the call is guarded by a `Once`: it runs a single time
- * whichever thread reaches it first, and the rest only observe the side effect.
+ * The call is unconditional on purpose: a `Once` would skip these later
+ * re-assertions after GLib's reset and `mpv_create` would fail at startup.
+ * `setlocale` is process-global, but glibc serializes it internally with a
+ * lock, so concurrent calls from the engine/mirror/crossfade threads are safe
+ * (they all set the same value).
  */
 pub fn ensure_lc_numeric_c() {
-    static LC_NUMERIC_ONCE: Once = Once::new();
-    LC_NUMERIC_ONCE.call_once(|| unsafe {
+    unsafe {
         setlocale(crate::constants::player::LC_NUMERIC, b"C\0".as_ptr());
-    });
+    }
 }
 
 unsafe extern "C" {
@@ -153,6 +155,16 @@ unsafe extern "C" {
  * property as an integer and return garbage when reinterpreted as `f64`).
  */
 pub const MPV_FORMAT_DOUBLE: c_int = 5;
+
+/**
+ * `mpv_format` used for reading boolean properties.
+ *
+ * Matches libmpv's `mpv_format`: `MPV_FORMAT_FLAG = 3` (the value compared is
+ * an `int`, non-zero = true). Reading a FLAG property natively avoids relying
+ * on the automatic numeric conversion of `mpv_get_property`, which is not
+ * guaranteed for every boolean property.
+ */
+pub const MPV_FORMAT_FLAG: c_int = 3;
 
 extern "C" {
     /**

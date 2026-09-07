@@ -129,6 +129,10 @@ fn run(commands: Receiver<PlayerCommand>, events: Sender<PlayerEvent>) {
         // Procesa los comandos de la UI (no bloqueante).
         match commands.try_recv() {
             Ok(PlayerCommand::Load(path)) => player.load(&path),
+            Ok(PlayerCommand::LoadScreenshot {
+                path,
+                screenshot_path,
+            }) => player.load_with_screenshot(&path, &screenshot_path),
             Ok(PlayerCommand::Play) => player.play(),
             Ok(PlayerCommand::Pause) => player.pause(),
             Ok(PlayerCommand::Stop) => player.stop(),
@@ -207,6 +211,27 @@ impl MpvSession {
         // cargaría detenido en el área principal. Se des-pausa explícitamente
         // (igual que hacen los espejos en `FileLoaded`) para que arranque solo.
         self.play();
+    }
+
+    /**
+     * Captures the current frame into `screenshot_path` (used as the
+     * crossfade fade-out layer) and then switches to `path`.
+     *
+     * The screenshot is taken BEFORE the file changes: the previous video is
+     * still active, so its current frame is saved while the fade-out image
+     * animates on top of the incoming one.
+     */
+    fn load_with_screenshot(&mut self, path: &str, screenshot_path: &str) {
+        if let Err(err) =
+            self.handler
+                .command(&[CMD_SCREENSHOT_TO_FILE, screenshot_path, SCREENSHOT_MODE])
+        {
+            // No se aborta la carga: se pierde solo la imagen de transición.
+            let message = format!("Error al capturar el fotograma de transición: {err}");
+            logging::error(&message);
+            self.report_error_str(message);
+        }
+        self.load(path);
     }
 
     fn play(&mut self) {

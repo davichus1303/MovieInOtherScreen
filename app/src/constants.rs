@@ -23,6 +23,48 @@ pub mod app {
     pub const LABEL_VIDEO_FRAME: &str = "Vídeo";
 }
 
+pub mod crossfade {
+    /** Duration (seconds) of the transition between videos. */
+    pub const DURATION_SECS: f64 = 3.0;
+    /** Animation step (ms) of the fade-out ticks. */
+    pub const STEP_MS: u32 = 50;
+    /** Name of the crossfade core thread. */
+    pub const THREAD_NAME: &str = "mpv-crossfade";
+    /** Idle sleep (ms) of the crossfade core thread. */
+    pub const IDLE_SLEEP_MS: u64 = 5;
+    /** Event polling timeout (non-blocking seconds) of the crossfade core. */
+    pub const EVENT_POLL_TIMEOUT_SECS: f64 = 0.0;
+    /** Label of the checkbox that enables the crossfade. */
+    pub const LABEL_CROSSFADE: &str = "Transición suave";
+    /** Tooltip of the crossfade toggle. */
+    pub const TOOLTIP_CROSSFADE: &str =
+        "Al cambiar de vídeo, funde el anterior con el nuevo durante 3 segundos";
+    /** Base name of the temporary screenshot used as the fade-out frame. */
+    pub const SCREENSHOT_FILE: &str = "movies-on-other-screens-crossfade-{pid}.png";
+
+    pub mod messages {
+        /** Reported when the crossfade thread cannot be created. */
+        pub const THREAD_CREATE_FAIL: &str = "No se pudo crear el hilo de la transición suave";
+        /** Reported when the crossfade core cannot be created. */
+        pub const CORE_CREATE_FAIL: &str = "No se pudo crear el núcleo de mpv de la transición: ";
+        /** Reported when the crossfade core cannot start. */
+        pub const CORE_INIT_FAIL: &str = "No se pudo iniciar el núcleo de mpv de la transición: ";
+    }
+
+    pub mod logs {
+        /** Logged when the crossfade core was created. */
+        pub const CORE_CREATED: &str = "[crossfade] core de audio creado";
+        /** Logged when the crossfade core ended. */
+        pub const CORE_ENDED: &str = "[crossfade] core de audio finalizado";
+        /** Logged when the fade-out layer started. */
+        pub const FADE_STARTED: &str = "[crossfade] transición iniciada";
+        /** Logged when the fade-out image was shown. */
+        pub const FADE_IMAGE_SET: &str = "[crossfade] imagen de la transición cargada";
+        /** Logged when the fade-out layer ended. */
+        pub const FADE_ENDED: &str = "[crossfade] transición finalizada";
+    }
+}
+
 pub mod wayland {
     /** Value of `XDG_SESSION_TYPE` identifying a Wayland session. */
     pub const SESSION_VALUE_WAYLAND: &str = "wayland";
@@ -276,6 +318,12 @@ pub mod mpv {
     pub const VALUE_VO_LIBMPV: &str = "libmpv";
     /** mpv option enabling/disabling audio. */
     pub const OPT_AUDIO: &str = "audio";
+    /** mpv option enabling/disabling video decoding and rendering. */
+    pub const OPT_VIDEO: &str = "video";
+    /** mpv command to capture the current frame into a file. */
+    pub const CMD_SCREENSHOT_TO_FILE: &str = "screenshot-to-file";
+    /** Screenshot mode: capture the last decoded video frame. */
+    pub const SCREENSHOT_MODE: &str = "video";
     /** mpv option disabling the user's `mpv.conf` (deterministic embedding). */
     pub const OPT_CONFIG: &str = "config";
     /** mpv option disabling auto-loaded scripts (no ytdl/IPC from user files). */

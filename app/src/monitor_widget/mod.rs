@@ -14,6 +14,7 @@ pub struct MonitorDeps {
     pub mirror: std::rc::Rc<std::cell::RefCell<MirrorController>>,
     pub monitors: std::rc::Rc<std::cell::RefCell<MonitorSet>>,
     pub application: adw::Application,
+    pub crossfade: std::rc::Rc<std::cell::RefCell<crate::crossfade::CrossfadeController>>,
 }
 
 /** Builds the complete monitors section (title + hint + cards + actions). */
@@ -60,6 +61,7 @@ pub fn build_monitors_section(deps: &MonitorDeps) -> gtk::Box {
     actions.set_halign(gtk::Align::Start);
     actions.set_valign(gtk::Align::Center);
     actions.append(&primary_selector(deps, &cards_box));
+    actions.append(&crossfade_toggle(deps));
     actions.append(&identify_button(deps));
     section.append(&actions);
 
@@ -116,6 +118,7 @@ fn primary_selector(deps: &MonitorDeps, cards_box: &gtk::Box) -> gtk::DropDown {
     let monitors = deps.monitors.clone();
     let mirror = deps.mirror.clone();
     let application = deps.application.clone();
+    let crossfade = deps.crossfade.clone();
     let cards = cards_box.clone();
     dropdown.connect_selected_notify(move |dd| {
         let pos = dd.selected();
@@ -133,6 +136,7 @@ fn primary_selector(deps: &MonitorDeps, cards_box: &gtk::Box) -> gtk::DropDown {
             mirror: mirror.clone(),
             monitors: monitors.clone(),
             application: application.clone(),
+            crossfade: crossfade.clone(),
         };
         refresh_cards(&cards, &owned);
         let st = AppState {
@@ -142,6 +146,18 @@ fn primary_selector(deps: &MonitorDeps, cards_box: &gtk::Box) -> gtk::DropDown {
         crate::events::mirror_reconcile(&st);
     });
     dropdown
+}
+
+/** Checkbox that enables/disables the crossfade between videos. */
+fn crossfade_toggle(deps: &MonitorDeps) -> gtk::CheckButton {
+    let toggle = gtk::CheckButton::with_label(crate::constants::crossfade::LABEL_CROSSFADE);
+    toggle.set_tooltip_text(Some(crate::constants::crossfade::TOOLTIP_CROSSFADE));
+    toggle.set_halign(gtk::Align::Start);
+    let crossfade = deps.crossfade.clone();
+    toggle.connect_toggled(move |btn| {
+        crossfade.borrow_mut().set_enabled(btn.is_active());
+    });
+    toggle
 }
 
 /** Button that identifies every secondary screen with a temporary badge. */

@@ -19,6 +19,7 @@ pub struct SidebarDeps {
     pub player: std::sync::mpsc::Sender<PlayerCommand>,
     pub mirror: Rc<RefCell<crate::mirror::MirrorController>>,
     pub monitors: Rc<RefCell<MonitorSet>>,
+    pub crossfade: Rc<RefCell<crate::crossfade::CrossfadeController>>,
 }
 
 /** Builds the side bar: video list with its buttons. */
@@ -78,6 +79,7 @@ fn connect_video_list(
     let player = deps.player.clone();
     let mirror = deps.mirror.clone();
     let monitors = deps.monitors.clone();
+    let crossfade = deps.crossfade.clone();
     let list_clone = list.clone();
 
     // --- For add_button closure ---
@@ -88,6 +90,7 @@ fn connect_video_list(
     let videos_for_row = videos.clone();
     let player_for_row = player.clone();
     let mirror_for_row = mirror.clone();
+    let crossfade_for_row = crossfade.clone();
 
     // --- For clear_button closure ---
     let videos_for_clear = videos.clone();
@@ -155,8 +158,18 @@ fn connect_video_list(
         let Some(path) = path else {
             return;
         };
+        // El crossfade debe notificarse ANTES de que el motor cambie de
+        // archivo: necesita leer la posición del vídeo que aún se reproduce.
+        let command =
+            match crate::crossfade::CrossfadeController::notify_play(&crossfade_for_row, &path) {
+                // Crossfade activo: el motor captura el último fotograma del
+                // vídeo anterior y después cambia de archivo.
+                Some(cmd) => cmd,
+                // Sin crossfade: cambio directo (comportamiento original).
+                None => crate::player::PlayerCommand::Load(path.clone()),
+            };
         // Use the cloned player, mirror, monitors
-        let _ = player_for_row.send(crate::player::PlayerCommand::Load(path.clone()));
+        let _ = player_for_row.send(command);
         let st = AppState {
             monitors: monitors.clone(),
             mirror: mirror_for_row.clone(),
