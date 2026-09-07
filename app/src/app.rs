@@ -22,6 +22,7 @@ use mos_core::monitors::MonitorSet;
 use mos_core::video_list::VideoList;
 
 use crate::constants::app;
+use crate::crossfade::CrossfadeController;
 use crate::mirror;
 use crate::monitor_widget;
 use crate::player::PlayerCommand;
@@ -97,19 +98,21 @@ fn build_layout(
 ) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
     let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
 
-    // Sidebar con videos, monitores y audio
+    // El área de reproducción se construye antes que la barra lateral: expone
+    // el controlador de crossfade que la barra necesita para animar los cambios.
+    let (area, timeline, crossfade) = build_player_area(application, state);
+    paned.set_end_child(Some(&area));
+
+    // Barra lateral con videos, monitores y audio
     let sidebar_deps = sidebar::SidebarDeps {
         videos: video_list.clone(),
         player: state.player.clone(),
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
+        crossfade,
     };
     let sidebar_widget = sidebar::build_sidebar(sidebar_deps);
     paned.set_start_child(Some(&sidebar_widget));
-
-    // Área de reproducción: vídeo + controles + timeline + monitores
-    let (area, timeline) = build_player_area(application, state);
-    paned.set_end_child(Some(&area));
     paned.set_position(app::SIDEBAR_INITIAL_POSITION);
 
     let root = gtk::Box::new(gtk::Orientation::Horizontal, app::ROOT_BOX_SPACING);
@@ -120,13 +123,24 @@ fn build_layout(
 fn build_player_area(
     application: &adw::Application,
     state: &AppState,
-) -> (gtk::Box, Rc<RefCell<crate::player_area::Timeline>>) {
+) -> (
+    gtk::Box,
+    Rc<RefCell<crate::player_area::Timeline>>,
+    Rc<RefCell<CrossfadeController>>,
+) {
     let video = gtk::Frame::new(Some(app::LABEL_VIDEO_FRAME));
     video.set_vexpand(true);
     video.set_valign(gtk::Align::Fill);
     video.set_hexpand(true);
     let embedded = crate::player::embed::EmbeddedVideo::new();
-    video.set_child(Some(embedded.widget()));
+
+    // Escenario del vídeo: el GLArea principal como hijo del `Overlay` y, sobre
+    // él, la capa saliente que el crossfade superpone mientras se desvanece.
+    let stage = gtk::Overlay::new();
+    stage.set_child(Some(embedded.widget()));
+    video.set_child(Some(&stage));
+    let crossfade = Rc::new(RefCell::new(CrossfadeController::new(stage)));
+
     // The engine shuts down when the main GLArea is destroyed (`unrealize`),
     // after its `mpv_render_context` is freed: libmpv requires that order
     // before destroying the `mpv_handle` (avoids the `queue_dtor` `assert`).
@@ -150,8 +164,9 @@ fn build_player_area(
         mirror: state.mirror.clone(),
         monitors: state.monitors.clone(),
         application: application.clone(),
+        crossfade: crossfade.clone(),
     });
     column.append(&monitors);
 
-    (column, timeline)
+    (column, timeline, crossfade)
 }

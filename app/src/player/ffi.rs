@@ -154,6 +154,16 @@ unsafe extern "C" {
  */
 pub const MPV_FORMAT_DOUBLE: c_int = 5;
 
+/**
+ * `mpv_format` used for reading boolean properties.
+ *
+ * Matches libmpv's `mpv_format`: `MPV_FORMAT_FLAG = 3` (the value compared is
+ * an `int`, non-zero = true). Reading a FLAG property natively avoids relying
+ * on the automatic numeric conversion of `mpv_get_property`, which is not
+ * guaranteed for every boolean property.
+ */
+pub const MPV_FORMAT_FLAG: c_int = 3;
+
 extern "C" {
     /**
      * Reads a property in double format (`MPV_FORMAT_DOUBLE`). Returns

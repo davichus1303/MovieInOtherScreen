@@ -23,6 +23,47 @@ pub mod app {
     pub const LABEL_VIDEO_FRAME: &str = "Vídeo";
 }
 
+pub mod crossfade {
+    /** Duration (seconds) of the transition between videos. */
+    pub const DURATION_SECS: f64 = 3.0;
+    /** Animation step (ms) of the fade-out ticks. */
+    pub const STEP_MS: u32 = 50;
+    /** Name of the crossfade core thread. */
+    pub const THREAD_NAME: &str = "mpv-crossfade";
+    /** Idle sleep (ms) of the crossfade core thread. */
+    pub const IDLE_SLEEP_MS: u64 = 5;
+    /** Event polling timeout (non-blocking seconds) of the crossfade core. */
+    pub const EVENT_POLL_TIMEOUT_SECS: f64 = 0.0;
+    /** Label of the checkbox that enables the crossfade. */
+    pub const LABEL_CROSSFADE: &str = "Transición suave";
+    /** Tooltip of the crossfade toggle. */
+    pub const TOOLTIP_CROSSFADE: &str =
+        "Al cambiar de vídeo, funde el anterior con el nuevo durante 3 segundos";
+
+    pub mod messages {
+        /** Reported when the crossfade thread cannot be created. */
+        pub const THREAD_CREATE_FAIL: &str = "No se pudo crear el hilo de la transición suave";
+        /** Reported when the crossfade core ended before starting. */
+        pub const CORE_TERMINATED: &str =
+            "El núcleo de la transición terminó antes de poder iniciarse";
+        /** Reported when the crossfade core cannot be created. */
+        pub const CORE_CREATE_FAIL: &str = "No se pudo crear el núcleo de mpv de la transición: ";
+        /** Reported when the crossfade core cannot start. */
+        pub const CORE_INIT_FAIL: &str = "No se pudo iniciar el núcleo de mpv de la transición: ";
+    }
+
+    pub mod logs {
+        /** Logged when the crossfade core was created. */
+        pub const CORE_CREATED: &str = "[crossfade] core de mpv creado";
+        /** Logged when the crossfade core ended. */
+        pub const CORE_ENDED: &str = "[crossfade] core de mpv finalizado";
+        /** Logged when a fade-out layer started. */
+        pub const FADE_STARTED: &str = "[crossfade] transición iniciada";
+        /** Logged when a fade-out layer ended. */
+        pub const FADE_ENDED: &str = "[crossfade] transición finalizada";
+    }
+}
+
 pub mod wayland {
     /** Value of `XDG_SESSION_TYPE` identifying a Wayland session. */
     pub const SESSION_VALUE_WAYLAND: &str = "wayland";

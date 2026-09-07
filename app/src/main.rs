@@ -10,6 +10,7 @@
 
 mod app;
 mod constants;
+mod crossfade;
 mod events;
 mod hwaccel;
 mod identify;
